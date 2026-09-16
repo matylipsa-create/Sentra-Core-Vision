@@ -43,11 +43,18 @@ export function useRealModeSensors(
         const tf = await import('@tensorflow/tfjs');
         const cocoSsd = await import('@tensorflow-models/coco-ssd');
         await tf.ready();
-        await tf.setBackend('webgl');
+        try {
+          await tf.setBackend('webgl');
+        } catch {
+          console.log('[COCO-SSD] WebGL falló, intentando CPU...');
+          await tf.setBackend('cpu');
+        }
+        console.log('[COCO-SSD] Backend:', tf.getBackend());
         const model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
         if (cancelled) return;
         modelRef.current = model as unknown as CocoSsdModel;
         console.log('[COCO-SSD] Modelo cargado exitosamente');
+        console.log('[COCO-SSD] Modelo listo, esperando video...');
         setState((s) => ({ ...s, loading: false }));
       } catch (err) {
         console.error('[COCO-SSD] Error al cargar:', err);
@@ -80,13 +87,20 @@ export function useRealModeSensors(
     async function detect() {
       const video = videoRef.current;
       const model = modelRef.current;
-      if (!video || !model || video.readyState < 2) return;
+      if (!video || !model) return;
+      console.log('[LOOP] Video readyState:', video.readyState);
+      console.log('[LOOP] Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+      if (video.readyState < 2) {
+        console.log('[LOOP] Video no listo, readyState:', video.readyState);
+        return;
+      }
       const now = Date.now();
       if (now - lastProcessTime < 1000) return;
       lastProcessTime = now;
       try {
         console.log('[LOOP] Frame enviado al modelo');
         const predictions = await model.detect(video);
+        console.log('[LOOP] Predicciones raw:', predictions);
         const detections: Detection[] = predictions.map((p) => ({
           class: p.class, score: p.score, bbox: p.bbox as [number, number, number, number],
         }));
