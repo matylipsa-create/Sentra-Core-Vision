@@ -40,10 +40,15 @@ export function getDirectionPhrase(direction: 'left' | 'center' | 'right'): stri
   return 'al frente';
 }
 
-export function describeDetection(det: Detection, labelES: string): SpatialDescription {
-  const [x, , w] = det.bbox;
-  const centerX = x + w / 2;
-  const sizeRatio = Math.min(w, 1);
+export function describeDetection(
+  det: Detection,
+  labelES: string,
+  videoWidth: number = 640,
+  videoHeight: number = 480
+): SpatialDescription {
+  const [x, , w, h] = det.bbox;
+  const centerX = (x + w / 2) / videoWidth;
+  const sizeRatio = Math.min(1, (w * h) / (videoWidth * videoHeight));
   const { range, phrase } = getDistanceRange(sizeRatio);
   const direction = getDirection(centerX);
   const directionPhrase = getDirectionPhrase(direction);
@@ -60,11 +65,16 @@ export function describeDetection(det: Detection, labelES: string): SpatialDescr
   return { text, range, direction, priority: priorityMap[range] };
 }
 
-export function describeScene(detections: Detection[], translate: (label: string) => string): string {
+export function describeScene(
+  detections: Detection[],
+  translate: (label: string) => string,
+  videoWidth: number = 640,
+  videoHeight: number = 480
+): string {
   if (detections.length === 0) return '';
 
   const descriptions = detections
-    .map((det) => describeDetection(det, translate(det.class)))
+    .map((det) => describeDetection(det, translate(det.class), videoWidth, videoHeight))
     .sort((a, b) => a.priority - b.priority)
     .slice(0, 3);
 

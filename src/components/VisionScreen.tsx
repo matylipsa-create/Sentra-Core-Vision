@@ -184,7 +184,7 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
     setDetectedLabels(labels);
     setDetectionCount(detections.length);
     console.log('[DETECTION] Count:', detections.length);
-    const sceneDesc = describeScene(detections, translateLabel);
+    const sceneDesc = describeScene(detections, translateLabel, videoWidth, videoHeight);
     const now = Date.now();
     const isSame = sceneDesc === lastSpokenRef.current;
     const timeSinceLast = now - lastSpokenTimeRef.current;

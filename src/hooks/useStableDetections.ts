@@ -25,7 +25,7 @@ export function useStableDetections(rawDetections: Detection[], context: 'indoor
     const tracked = trackedRef.current;
 
     for (const det of refined) {
-      const key = `${det.class}_${Math.round(det.bbox[0] * 10)}_${Math.round(det.bbox[1] * 10)}`;
+      const key = `${det.class}_${Math.round(det.bbox[0] / 50)}_${Math.round(det.bbox[1] / 50)}`;
       const existing = tracked.get(key);
       if (existing) {
         existing.hits += 1;
