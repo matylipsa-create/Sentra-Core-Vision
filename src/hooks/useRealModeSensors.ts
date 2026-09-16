@@ -75,11 +75,15 @@ export function useRealModeSensors(
 
   useEffect(() => {
     if (!active || state.loading || !modelRef.current) return;
+    let lastProcessTime = 0;
 
     async function detect() {
       const video = videoRef.current;
       const model = modelRef.current;
       if (!video || !model || video.readyState < 2) return;
+      const now = Date.now();
+      if (now - lastProcessTime < 1000) return;
+      lastProcessTime = now;
       try {
         console.log('[LOOP] Frame enviado al modelo');
         const predictions = await model.detect(video);

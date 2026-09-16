@@ -3,7 +3,7 @@ import { voiceManager } from '../services/VoiceManager';
 import { deviceManager } from '../core/DeviceManager';
 import { spatialAudioEngine } from '../core/SpatialAudioEngine';
 import { useRealModeSensors, type Detection } from '../hooks/useRealModeSensors';
-import { initOCR, recognizeText } from '../services/OCREngine';
+import { initOCR, recognizeText, terminateOCR } from '../services/OCREngine';
 import { describeScene } from '../lib/spatialTranslator';
 import { useStableDetections } from '../hooks/useStableDetections';
 
@@ -165,6 +165,12 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   );
 
   const detections = useStableDetections(rawDetections, 'outdoor');
+
+  useEffect(() => {
+    return () => {
+      terminateOCR();
+    };
+  }, []);
 
   useEffect(() => {
     console.log('[USE-EFFECT] Detections:', detections.length);
