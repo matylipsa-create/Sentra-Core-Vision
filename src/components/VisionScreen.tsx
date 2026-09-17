@@ -6,6 +6,9 @@ import { useRealModeSensors, type Detection } from '../hooks/useRealModeSensors'
 import { initOCR, recognizeText, terminateOCR } from '../services/OCREngine';
 import { describeScene } from '../lib/spatialTranslator';
 import { useStableDetections } from '../hooks/useStableDetections';
+import { adaptiveUIMode, type AdaptiveUIMode } from '../core/AdaptiveUIMode';
+import { taskDecomposer } from '../core/TaskDecomposer';
+import { cognitiveLoadManager } from '../core/CognitiveLoadManager';
 
 const LABEL_ES: Record<string, string> = {
   person: 'persona',
@@ -122,6 +125,7 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   const [ttsRate, setTtsRate] = useState<number>(voiceManager.getRate());
   const [isOCRLoading, setIsOCRLoading] = useState(false);
   const [ocrText, setOcrText] = useState('');
+  const [uiMode, setUiMode] = useState<AdaptiveUIMode>(adaptiveUIMode.getMode());
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastTapRef = useRef(0);
   const lastSpokenRef = useRef<string>('');
@@ -185,15 +189,16 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
     setDetectionCount(detections.length);
     console.log('[DETECTION] Count:', detections.length);
     const sceneDesc = describeScene(detections, translateLabel, videoWidth, videoHeight);
+    const adapted = adaptiveUIMode.adaptDescription(sceneDesc, uiMode);
     const now = Date.now();
-    const isSame = sceneDesc === lastSpokenRef.current;
+    const isSame = adapted === lastSpokenRef.current;
     const timeSinceLast = now - lastSpokenTimeRef.current;
     const shouldSpeak = !isSame || (isSame && timeSinceLast >= DEBOUNCE_MS);
 
     if (shouldSpeak) {
-      lastSpokenRef.current = sceneDesc;
+      lastSpokenRef.current = adapted;
       lastSpokenTimeRef.current = now;
-      setLastDescription(sceneDesc);
+      setLastDescription(adapted);
 
       const primaryDetection = detections[0];
       const area = computeBboxArea(primaryDetection, videoWidth, videoHeight);
@@ -206,9 +211,17 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
         spatialAudioEngine.playSpatialBeep(panX, distance);
       } catch { /* noop */ }
 
-      speak(sceneDesc);
+      const loadLevel = cognitiveLoadManager.getLoadLevel();
+      const shouldThrottle = cognitiveLoadManager.shouldThrottle();
+      if (!shouldThrottle && uiMode !== 'silent') {
+        speak(adapted);
+      } else if (uiMode === 'silent') {
+        console.log('[UI MODE] silent: sin TTS');
+      } else {
+        console.log('[THROTTLE] Carga alta, TTS suprimida');
+      }
     }
-  }, [detections, speak]);
+  }, [detections, speak, uiMode]);
 
   const handleToggle = useCallback(async () => {
     const newState = !isActive;
@@ -301,22 +314,36 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
     }
     setIsOCRLoading(true);
     setOcrText('');
-    speak('Leyendo texto. Un momento.');
+    const shouldThrottle = cognitiveLoadManager.shouldThrottle();
+    if (!shouldThrottle) speak('Leyendo texto. Un momento.');
     try {
       await initOCR();
       const text = await recognizeText(videoRef.current!);
       if (text) {
         setOcrText(text);
-        speak(text);
-      } else {
+        if (!shouldThrottle) speak(text);
+      } else if (!shouldThrottle) {
         speak('No se detectó texto');
       }
     } catch {
-      speak('Error al leer texto');
+      if (!shouldThrottle) speak('Error al leer texto');
     } finally {
       setIsOCRLoading(false);
     }
   }, [isActive, speak]);
+
+  const handleDecomposeTask = useCallback(() => {
+    const task = 'leer cartel de colectivo';
+    const steps = taskDecomposer.decompose(task);
+    const mode = uiMode === 'silent' ? 'silent' : 'normal';
+    if (mode === 'silent') {
+      console.log('[TASK] Modo silencioso, pasos listados sin voz');
+      setLastDescription(steps.join(' • '));
+      return;
+    }
+    taskDecomposer.speakSteps(steps, voiceManager);
+    setLastDescription(steps.join(' • '));
+  }, [uiMode]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -360,6 +387,27 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
         ))}
       </div>
 
+      <div className="tts-rate-selector" role="group" aria-label="Modo de detalle de entorno">
+        <span className="tts-rate-label">Detalle:</span>
+        {(['smooth', 'analytical', 'silent'] as AdaptiveUIMode[]).map((mode) => (
+          <button
+            key={mode}
+            className={`tts-rate-btn ${uiMode === mode ? 'tts-rate-btn--active' : ''}`}
+            onClick={() => {
+              const next = mode;
+              adaptiveUIMode.setMode(next);
+              setUiMode(next);
+            }}
+            aria-label={`Modo de detalle ${mode}`}
+            aria-pressed={uiMode === mode}
+            role="button"
+            tabIndex={0}
+          >
+            {mode === 'smooth' ? 'suave' : mode === 'analytical' ? 'analítico' : 'silencio'}
+          </button>
+        ))}
+      </div>
+
       <button
         className="vision-ocr-button"
         onClick={handleReadText}
@@ -369,6 +417,16 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
         tabIndex={0}
       >
         {isOCRLoading ? 'LEYENDO...' : 'LEER TEXTO'}
+      </button>
+
+      <button
+        className="vision-ocr-button"
+        onClick={handleDecomposeTask}
+        aria-label="Descomponer tarea en micro pasos"
+        role="button"
+        tabIndex={0}
+      >
+        DESCOMPOSER TAREA
       </button>
 
       {ocrText && (

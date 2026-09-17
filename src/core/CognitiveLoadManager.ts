@@ -163,9 +163,22 @@ class CognitiveLoadManager {
     const score =
       recent.filter((e) => e.level === 'CRITICAL').length * 3 +
       recent.filter((e) => e.level === 'NAVIGATION').length;
-    if (score >= 20) return 'high';
-    if (score >= 8) return 'medium';
+    const bioLoad = this.state.load;
+    if (score >= 20 || bioLoad >= 0.8) return 'high';
+    if (score >= 8 || bioLoad >= 0.55) return 'medium';
     return 'low';
+  }
+
+  public shouldThrottle(): boolean {
+    return this.getLoadLevel() === 'high';
+  }
+
+  public getFilteredEvents<T extends { level?: string; priority?: string; type?: string }>(events: T[]): T[] {
+    if (!this.shouldThrottle()) return events;
+    return events.filter((event) => {
+      const level = String(event.level ?? event.priority ?? event.type ?? 'INFO').toUpperCase();
+      return level === 'CRITICAL' || level === 'NAVIGATION';
+    });
   }
 
   public getPriorityBreakdown(): { critical: number; navigation: number; descriptive: number } {

@@ -18,6 +18,7 @@ import { selfPerceptionLoop } from '../core/SelfPerceptionLoop';
 import { identityManager } from '../core/IdentityManager';
 import { deviceSensorManager, type AvailableSensor } from '../core/DeviceSensorManager';
 import { cognitiveLoadManager, CognitiveMode } from '../core/CognitiveLoadManager';
+import { adaptiveUIMode, AdaptiveUIMode } from '../core/AdaptiveUIMode';
 import { fieldLogManager, FieldLogEntry } from '../core/FieldLogManager';
 import { buildPipelineManager, BuildStatus, BuildResult, BuildType } from '../core/BuildPipelineManager';
 
@@ -51,8 +52,9 @@ export interface AppState {
   usbPorts: Map<string, PortStatus>;
   availableSensors: AvailableSensor[];
   uiMode: UiMode;
-  cognitiveLoad: number;
+  cognitiveLoad: 'low' | 'medium' | 'high';
   cognitiveMode: CognitiveMode;
+  uiDetailMode: AdaptiveUIMode;
   fieldLogEntries: FieldLogEntry[];
   buildStatus: BuildStatus;
   currentBuild: BuildResult | null;
@@ -82,7 +84,9 @@ interface AppContextValue extends AppState {
   deactivateGuardian: () => void;
   refreshSensors: () => AvailableSensor[];
   setUiMode: (mode: UiMode) => void;
+  setUiDetailMode: (mode: AdaptiveUIMode) => void;
   setCognitiveMode: (mode: CognitiveMode) => void;
+  setCognitiveLoad: (load: 'low' | 'medium' | 'high') => void;
   resetCognitiveLoad: () => void;
   addFieldMarker: (label: string) => void;
   exportFieldLog: () => Promise<void>;
@@ -127,6 +131,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { /* localStorage unavailable */ }
     bioSoftware.setEnabled(savedBio);
 
+    let savedCognitiveLoad: 'low' | 'medium' | 'high' = cognitiveLoadManager.getLoadLevel();
+    try {
+      const rawLoad = localStorage.getItem('sentra_cognitive_load');
+      if (rawLoad === 'low' || rawLoad === 'medium' || rawLoad === 'high') savedCognitiveLoad = rawLoad;
+    } catch { /* localStorage unavailable */ }
+
+    let savedDetailMode: AdaptiveUIMode = adaptiveUIMode.getMode();
+    try {
+      const rawMode = localStorage.getItem('sentra_ui_detail_mode');
+      if (rawMode === 'smooth' || rawMode === 'analytical' || rawMode === 'silent') savedDetailMode = rawMode;
+    } catch { /* localStorage unavailable */ }
+
     let savedCamera = false;
     try {
       savedCamera = localStorage.getItem('sentra_camera_active') === 'true';
@@ -143,8 +159,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isBacterialGuardianActive: false, guardianStatus: null, usbPorts: new Map(),
       availableSensors: [],
       uiMode: 'vision',
-      cognitiveLoad: 0.3,
+      cognitiveLoad: savedCognitiveLoad,
       cognitiveMode: 'ASSIST',
+      uiDetailMode: savedDetailMode,
       fieldLogEntries: [],
       buildStatus: 'idle',
       currentBuild: null,
@@ -396,14 +413,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, uiMode: mode }));
   }, []);
 
+  const setUiDetailMode = useCallback((mode: AdaptiveUIMode) => {
+    adaptiveUIMode.setMode(mode);
+    try { localStorage.setItem('sentra_ui_detail_mode', mode); } catch { /* localStorage unavailable */ }
+    setState((s) => ({ ...s, uiDetailMode: mode }));
+  }, []);
+
   const setCognitiveMode = useCallback((mode: CognitiveMode) => {
     cognitiveLoadManager.setMode(mode);
-    setState((s) => ({ ...s, cognitiveMode: mode }));
+    setState((s) => ({ ...s, cognitiveMode: mode, cognitiveLoad: cognitiveLoadManager.getLoadLevel() }));
+  }, []);
+
+  const setCognitiveLoad = useCallback((load: 'low' | 'medium' | 'high') => {
+    try { localStorage.setItem('sentra_cognitive_load', load); } catch { /* localStorage unavailable */ }
+    setState((s) => ({ ...s, cognitiveLoad: load }));
   }, []);
 
   const resetCognitiveLoad = useCallback(() => {
     cognitiveLoadManager.resetLoad();
-    setState((s) => ({ ...s, cognitiveLoad: 0.3, cognitiveMode: 'ASSIST' }));
+    setState((s) => ({ ...s, cognitiveLoad: 'low', cognitiveMode: 'ASSIST', uiDetailMode: adaptiveUIMode.getMode() }));
   }, []);
 
   const addFieldMarker = useCallback((label: string) => {
@@ -473,8 +501,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     exportData, getEvidence,
     toggleBio, startBioSession, stopBioSession, getBioReframe,
     activateGuardian, deactivateGuardian, refreshSensors,
-    setUiMode,
-    setCognitiveMode, resetCognitiveLoad,
+    setUiMode, setUiDetailMode,
+    setCognitiveMode, setCognitiveLoad, resetCognitiveLoad,
     addFieldMarker, exportFieldLog,
     triggerBuild, optimizeBuildForLowEnd,
     toggleCamera, setSensorsConnected,
