@@ -1,3 +1,5 @@
+import type { Insight } from './SkillPerceptionEngine';
+
 export type AdaptiveUIMode = 'smooth' | 'analytical' | 'silent';
 
 const STORAGE_KEY = 'sentra_ui_detail_mode';
@@ -49,6 +51,23 @@ class AdaptiveUIModeManager {
     }
 
     return safeText;
+  }
+
+  adaptFromInsights(insights: Insight[]): AdaptiveUIMode {
+    if (!insights || insights.length === 0) return this.getMode();
+    const text = insights.map((insight) => insight.summary).join(' ').toLowerCase();
+
+    if (text.includes('mañana') || text.includes('matutino') || text.includes('colectivo') || text.includes('semáforo')) {
+      this.setMode('analytical');
+      return 'analytical';
+    }
+
+    if (text.includes('baja') || text.includes('silencio') || text.includes('reducida')) {
+      this.setMode('smooth');
+      return 'smooth';
+    }
+
+    return this.getMode();
   }
 }
 

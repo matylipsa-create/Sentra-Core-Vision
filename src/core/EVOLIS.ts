@@ -27,6 +27,21 @@ export interface EVOLISStats {
   modules: string[];
 }
 
+export interface EventRecord {
+  id: string;
+  type: string;
+  module: string;
+  action: string;
+  timestamp: number;
+  data: string;
+}
+
+export interface EventStats {
+  totalEvents: number;
+  eventsByType: Record<string, number>;
+  averageFrequencyPerHour: number;
+}
+
 const GENESIS_HASH = '0'.repeat(64);
 
 export class EVOLIS {
@@ -105,6 +120,66 @@ export class EVOLIS {
 
   getEntries(): EVOLISEvidence[] {
     return [...this.entries];
+  }
+
+  getEventsByType(type: string, limit = 100): EventRecord[] {
+    const normalized = type.toLowerCase();
+    return this.entries
+      .filter((event) => {
+        const module = (event.module ?? '').toLowerCase();
+        const action = (event.action ?? '').toLowerCase();
+        return module === normalized || action.includes(normalized);
+      })
+      .slice(-limit)
+      .map((event) => ({
+        id: event.id,
+        type: event.module,
+        module: event.module,
+        action: event.action,
+        timestamp: event.entry.timestamp,
+        data: event.entry.data,
+      }));
+  }
+
+  getEventsByTimeRange(startTime: number, endTime: number): EventRecord[] {
+    return this.entries
+      .filter((event) => {
+        const ts = event.entry.timestamp;
+        return ts >= startTime && ts <= endTime;
+      })
+      .map((event) => ({
+        id: event.id,
+        type: event.module,
+        module: event.module,
+        action: event.action,
+        timestamp: event.entry.timestamp,
+        data: event.entry.data,
+      }));
+  }
+
+  getEventStats(): EventStats {
+    const eventsByType: Record<string, number> = {};
+    for (const entry of this.entries) {
+      const label = entry.module || 'unknown';
+      eventsByType[label] = (eventsByType[label] ?? 0) + 1;
+    }
+
+    const totalEvents = this.entries.length;
+    const averageFrequencyPerHour = totalEvents === 0 ? 0 : totalEvents / Math.max(1, this.getTimeSpanHours());
+
+    return {
+      totalEvents,
+      eventsByType,
+      averageFrequencyPerHour,
+    };
+  }
+
+  private getTimeSpanHours(): number {
+    if (this.entries.length < 2) return 1;
+    const minTs = Math.min(...this.entries.map((e) => e.entry.timestamp));
+    const maxTs = Math.max(...this.entries.map((e) => e.entry.timestamp));
+    const diffMs = Math.max(1, maxTs - minTs);
+    return diffMs / (1000 * 60 * 60);
   }
 
   async getStats(): Promise<EVOLISStats> {

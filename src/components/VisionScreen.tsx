@@ -9,6 +9,7 @@ import { useStableDetections } from '../hooks/useStableDetections';
 import { adaptiveUIMode, type AdaptiveUIMode } from '../core/AdaptiveUIMode';
 import { taskDecomposer } from '../core/TaskDecomposer';
 import { cognitiveLoadManager } from '../core/CognitiveLoadManager';
+import { skillPerceptionEngine, type Insight } from '../core/SkillPerceptionEngine';
 
 const LABEL_ES: Record<string, string> = {
   person: 'persona',
@@ -126,6 +127,7 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   const [isOCRLoading, setIsOCRLoading] = useState(false);
   const [ocrText, setOcrText] = useState('');
   const [uiMode, setUiMode] = useState<AdaptiveUIMode>(adaptiveUIMode.getMode());
+  const [insights, setInsights] = useState<Insight[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastTapRef = useRef(0);
   const lastSpokenRef = useRef<string>('');
@@ -171,6 +173,8 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   const detections = useStableDetections(rawDetections, 'outdoor');
 
   useEffect(() => {
+    void skillPerceptionEngine.syncWithEvolis().catch(() => undefined);
+    void skillPerceptionEngine.getEvolisInsights().then(setInsights).catch(() => undefined);
     return () => {
       terminateOCR();
     };
@@ -432,6 +436,17 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
       {ocrText && (
         <div className="vision-ocr-text" role="region" aria-live="polite" aria-label="Texto reconocido por OCR">
           {ocrText}
+        </div>
+      )}
+
+      {insights.length > 0 && (
+        <div className="vision-status" role="note" aria-label="Insights de aprendizaje del sistema">
+          <p className="vision-camera-status"><strong>Aprendizaje</strong></p>
+          {insights.map((insight) => (
+            <p key={insight.id} className="vision-detected-labels">
+              {insight.summary}
+            </p>
+          ))}
         </div>
       )}
 
