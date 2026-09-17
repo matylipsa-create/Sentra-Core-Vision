@@ -203,7 +203,7 @@ export class SkillPerceptionEngine {
 
         return {
           id: `evolis-${hour}-${Date.now()}`,
-          hourRange: [hour, hour + 1],
+          hourRange: [hour, hour + 1] as [number, number],
           dayOfWeek: Array.from(new Set(filtered.filter((event) => new Date(event.entry.timestamp).getHours() === hour).map((event) => new Date(event.entry.timestamp).getDay()))),
           approximateLocation: 'aprendizaje evolis',
           expectedDetections,

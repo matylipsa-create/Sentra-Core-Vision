@@ -10,6 +10,9 @@ import { adaptiveUIMode, type AdaptiveUIMode } from '../core/AdaptiveUIMode';
 import { taskDecomposer } from '../core/TaskDecomposer';
 import { cognitiveLoadManager } from '../core/CognitiveLoadManager';
 import { skillPerceptionEngine, type Insight } from '../core/SkillPerceptionEngine';
+import { useApp } from '../context/AppContext';
+import { getHistory } from '../core/DecisionHistory';
+import { listNodes, revertToNode } from '../core/InflectionNode';
 
 const LABEL_ES: Record<string, string> = {
   person: 'persona',
@@ -118,6 +121,7 @@ interface VisionScreenProps {
 }
 
 export function VisionScreen({ onToggle }: VisionScreenProps) {
+  const { decisionHistory, inflectionNodes, userInclination, setDecisionHistory, setInflectionNodes } = useApp();
   const [isActive, setIsActive] = useState(false);
   const [lastDescription, setLastDescription] = useState('');
   const [detectionCount, setDetectionCount] = useState(0);
@@ -128,6 +132,7 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   const [ocrText, setOcrText] = useState('');
   const [uiMode, setUiMode] = useState<AdaptiveUIMode>(adaptiveUIMode.getMode());
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [openPanel, setOpenPanel] = useState<'history' | 'reversion' | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastTapRef = useRef(0);
   const lastSpokenRef = useRef<string>('');
@@ -215,7 +220,6 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
         spatialAudioEngine.playSpatialBeep(panX, distance);
       } catch { /* noop */ }
 
-      const loadLevel = cognitiveLoadManager.getLoadLevel();
       const shouldThrottle = cognitiveLoadManager.shouldThrottle();
       if (!shouldThrottle && uiMode !== 'silent') {
         speak(adapted);
@@ -349,6 +353,24 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
     setLastDescription(steps.join(' • '));
   }, [uiMode]);
 
+  const openHistory = useCallback(async () => {
+    const history = await getHistory(20);
+    setDecisionHistory(history);
+    setOpenPanel('history');
+  }, [setDecisionHistory]);
+
+  const openReversion = useCallback(async () => {
+    const nodes = await listNodes(20);
+    setInflectionNodes(nodes);
+    setOpenPanel('reversion');
+  }, [setInflectionNodes]);
+
+  const handleRevert = useCallback(async (nodeId: string) => {
+    if (await revertToNode(nodeId)) {
+      setOpenPanel(null);
+    }
+  }, []);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -411,6 +433,44 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
           </button>
         ))}
       </div>
+
+      <div className="tts-rate-selector" role="group" aria-label="Soberanía y trazabilidad">
+        <button className="tts-rate-btn" onClick={openHistory} aria-label="Abrir historial de decisiones">
+          Historial
+        </button>
+        <button className="tts-rate-btn" onClick={openReversion} aria-label="Abrir reversiones">
+          Revierte
+        </button>
+      </div>
+
+      {userInclination && userInclination.totalDecisions > 0 && (
+        <p className="vision-status" role="note" aria-label="Indicador de inclinación">
+          Inclinación observada: {userInclination.dominantType} ({Math.round(userInclination.confidence * 100)}%)
+        </p>
+      )}
+
+      {openPanel === 'history' && (
+        <div className="vision-status" role="region" aria-label="Historial de decisiones">
+          <strong>Historial</strong>
+          {decisionHistory.length === 0 ? <p>No hay decisiones registradas.</p> : decisionHistory.slice(0, 10).map((decision) => (
+            <p key={decision.id ?? decision.timestamp}>{decision.type}: {decision.description}</p>
+          ))}
+          <button className="tts-rate-btn" onClick={() => setOpenPanel(null)}>Cerrar</button>
+        </div>
+      )}
+
+      {openPanel === 'reversion' && (
+        <div className="vision-status" role="region" aria-label="Nodos de inflexión reversibles">
+          <strong>Reversiones</strong>
+          {inflectionNodes.length === 0 ? <p>No hay nodos reversibles.</p> : inflectionNodes.slice(0, 10).map((node) => (
+            <p key={node.id}>
+              {node.decision.description}{' '}
+              <button className="tts-rate-btn" onClick={() => void handleRevert(node.id)}>Revertir</button>
+            </p>
+          ))}
+          <button className="tts-rate-btn" onClick={() => setOpenPanel(null)}>Cerrar</button>
+        </div>
+      )}
 
       <button
         className="vision-ocr-button"

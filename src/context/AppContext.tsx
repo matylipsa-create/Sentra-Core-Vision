@@ -21,6 +21,11 @@ import { cognitiveLoadManager, CognitiveMode } from '../core/CognitiveLoadManage
 import { adaptiveUIMode, AdaptiveUIMode } from '../core/AdaptiveUIMode';
 import { fieldLogManager, FieldLogEntry } from '../core/FieldLogManager';
 import { buildPipelineManager, BuildStatus, BuildResult, BuildType } from '../core/BuildPipelineManager';
+import type { InflectionNode } from '../core/InflectionNode';
+import type { Decision } from '../core/InflectionNode';
+import type { Inclination } from '../core/DecisionHistory';
+import { listNodes } from '../core/InflectionNode';
+import { getHistory, getInclination } from '../core/DecisionHistory';
 
 export type ModuleName =
   | 'vision' | 'seguridad' | 'movimiento' | 'juego'
@@ -60,6 +65,9 @@ export interface AppState {
   currentBuild: BuildResult | null;
   cameraActive: boolean;
   sensorsConnected: boolean;
+  inflectionNodes: InflectionNode[];
+  decisionHistory: Decision[];
+  userInclination: Inclination | null;
 }
 
 interface AppContextValue extends AppState {
@@ -94,6 +102,9 @@ interface AppContextValue extends AppState {
   optimizeBuildForLowEnd: () => void;
   toggleCamera: (active?: boolean) => void;
   setSensorsConnected: (connected: boolean) => void;
+  setInflectionNodes: (nodes: InflectionNode[]) => void;
+  setDecisionHistory: (decisions: Decision[]) => void;
+  setUserInclination: (inclination: Inclination | null) => void;
   priorityLevel: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE';
   setPriorityLevel: (level: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE') => void;
   sentinelAlertActive: boolean;
@@ -167,10 +178,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentBuild: null,
       cameraActive: savedCamera,
       sensorsConnected: false,
+      inflectionNodes: [],
+      decisionHistory: [],
+      userInclination: null,
     };
   });
 
   useEffect(() => {
+    try {
+      const savedNodes = localStorage.getItem('sentra_inflection_nodes');
+      const savedDecisions = localStorage.getItem('sentra_decision_history');
+      const savedInclination = localStorage.getItem('sentra_user_inclination');
+      setState((s) => ({
+        ...s,
+        inflectionNodes: savedNodes ? JSON.parse(savedNodes) as InflectionNode[] : s.inflectionNodes,
+        decisionHistory: savedDecisions ? JSON.parse(savedDecisions) as Decision[] : s.decisionHistory,
+        userInclination: savedInclination ? JSON.parse(savedInclination) as Inclination : s.userInclination,
+      }));
+    } catch { /* localStorage unavailable or invalid */ }
     storageService.init().then(() => {
       storageService.getAllEvidence().then((entries) => {
         if (entries.length > 0) {
@@ -193,6 +218,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       fieldLogManager.init().then(() => {
         setState((s) => ({ ...s, fieldLogEntries: fieldLogManager.getRecentEntries(30) }));
       });
+      void Promise.all([listNodes(50), getHistory(50), getInclination()]).then(([nodes, decisions, inclination]) => {
+        setState((s) => ({ ...s, inflectionNodes: nodes, decisionHistory: decisions, userInclination: inclination }));
+      }).catch(() => undefined);
     });
   }, []);
 
@@ -465,6 +493,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, sensorsConnected: connected }));
   }, []);
 
+  const setInflectionNodes = useCallback((nodes: InflectionNode[]) => {
+    setState((s) => ({ ...s, inflectionNodes: nodes }));
+  }, []);
+
+  const setDecisionHistory = useCallback((decisions: Decision[]) => {
+    setState((s) => ({ ...s, decisionHistory: decisions }));
+  }, []);
+
+  const setUserInclination = useCallback((inclination: Inclination | null) => {
+    setState((s) => ({ ...s, userInclination: inclination }));
+  }, []);
+
   const [priorityLevel, setPriorityLevel] = useState<'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE'>('NAVIGATION');
   const [sentinelAlertActive, setSentinelAlertActive] = useState<boolean>(false);
   const [spatialAudioEnabled, setSpatialAudioEnabled] = useState<boolean>(true);
@@ -493,6 +533,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [priorityLevel, sentinelAlertActive, spatialAudioEnabled, perimeterConfig]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('sentra_inflection_nodes', JSON.stringify(state.inflectionNodes));
+      localStorage.setItem('sentra_decision_history', JSON.stringify(state.decisionHistory));
+      localStorage.setItem('sentra_user_inclination', JSON.stringify(state.userInclination));
+    } catch { /* localStorage unavailable */ }
+  }, [state.inflectionNodes, state.decisionHistory, state.userInclination]);
+
   const value: AppContextValue = {
     ...state, setModule, toggleVoice, toggleHumanVeto,
     setPowerMode, setSyncTransport, processCommand, setGeminiRemote,
@@ -506,6 +554,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addFieldMarker, exportFieldLog,
     triggerBuild, optimizeBuildForLowEnd,
     toggleCamera, setSensorsConnected,
+    setInflectionNodes, setDecisionHistory, setUserInclination,
     priorityLevel, setPriorityLevel,
     sentinelAlertActive, setSentinelAlertActive,
     spatialAudioEnabled, setSpatialAudioEnabled,

@@ -8,6 +8,7 @@ import {
   generateDilithiumKeyPair,
   uuidv4,
 } from '../lib/crypto';
+import type { Decision } from './InflectionNode';
 
 export type ChainIntegrityListener = (valid: boolean) => void;
 
@@ -83,6 +84,14 @@ export class EVOLIS {
 
   async registerUSBEvent(event: string): Promise<EVOLISEvidence> {
     return this.record('guardian', 'usb_event', event);
+  }
+
+  async registerDecision(decision: Decision, nodeId: string): Promise<void> {
+    await this.record('sovereignty', 'decision', JSON.stringify({ nodeId, decision }));
+  }
+
+  async registerReversion(nodeId: string, reason: string): Promise<void> {
+    await this.record('sovereignty', 'reversion', JSON.stringify({ nodeId, reason }));
   }
 
   async verifyChainIntegrity(): Promise<boolean> {
