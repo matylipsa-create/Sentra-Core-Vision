@@ -1,5 +1,6 @@
 import { openSovereigntyDB } from './SovereigntyStorage';
 import type { Decision, DecisionType } from './InflectionNode';
+import { moralNode } from './MoralNode';
 
 export interface Inclination {
   totalDecisions: number;
@@ -20,6 +21,8 @@ function normalizeDecision(decision: Decision): Decision {
 }
 
 export async function recordDecision(decision: Decision): Promise<void> {
+  const evaluation = moralNode.evaluate(JSON.stringify({ action: 'record_decision', decision }));
+  if (!evaluation.allowed) return;
   const db = await openSovereigntyDB();
   await db.put(STORE_NAME, normalizeDecision(decision));
 }

@@ -1,6 +1,9 @@
 import { evolis } from './EVOLIS';
 import { openSovereigntyDB } from './SovereigntyStorage';
 import { recordDecision } from './DecisionHistory';
+import { moralNode } from './MoralNode';
+import { adaptiveUIMode } from './AdaptiveUIMode';
+import { cognitiveLoadManager } from './CognitiveLoadManager';
 
 export type DecisionType = 'mode_change' | 'veto' | 'preference' | 'action';
 
@@ -77,6 +80,11 @@ export function setCurrentSystemState(state: Partial<SystemSnapshot>): void {
 }
 
 export async function createNode(decision: Decision, systemState?: Partial<SystemSnapshot>): Promise<InflectionNode> {
+  const evaluation = moralNode.evaluate(JSON.stringify({ action: 'create_node', decision }));
+  if (!evaluation.allowed) {
+    await evolis.record('sovereignty', 'blocked_action', JSON.stringify({ action: 'create_node', decision, evaluation }));
+    throw new Error('MoralNode bloqueó la creación del nodo');
+  }
   const node: InflectionNode = {
     id: createId(),
     timestamp: Date.now(),
@@ -102,9 +110,29 @@ export async function revertToNode(
 ): Promise<boolean> {
   const node = await getNode(nodeId);
   if (!node || !node.reversible) return false;
+  const evaluation = moralNode.evaluate(JSON.stringify({ action: 'revert_node', nodeId }));
+  if (!evaluation.allowed) {
+    await evolis.record('sovereignty', 'blocked_action', JSON.stringify({ action: 'revert_node', nodeId, evaluation }));
+    throw new Error('MoralNode bloqueó la reversión del nodo');
+  }
   currentSystemState = node.systemState;
+  moralNode.setHumanVeto(node.systemState.humanVeto);
+  const restoredMode = node.systemState.state.uiDetailMode ?? node.systemState.state.uiMode;
+  if (restoredMode === 'smooth' || restoredMode === 'analytical' || restoredMode === 'silent') {
+    adaptiveUIMode.setMode(restoredMode);
+  }
+  if (node.systemState.cognitiveLoad === 'high') cognitiveLoadManager.setMode('STABILIZE');
+  if (node.systemState.cognitiveLoad === 'medium') cognitiveLoadManager.setMode('OBSERVE');
+  if (node.systemState.cognitiveLoad === 'low') cognitiveLoadManager.setMode('ASSIST');
   await restore?.(node.systemState);
-  await evolis.registerReversion(nodeId, 'Reversión solicitada por el usuario');
+  await evolis.registerReversion(nodeId, JSON.stringify({
+    reason: 'Reversión solicitada por el usuario',
+    restored: {
+      humanVeto: node.systemState.humanVeto,
+      uiMode: restoredMode,
+      cognitiveLoad: node.systemState.cognitiveLoad,
+    },
+  }));
   return true;
 }
 

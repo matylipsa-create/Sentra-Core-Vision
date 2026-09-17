@@ -63,7 +63,7 @@ Sentra Core es un **motor de inteligencia artificial soberano** que funciona com
 1. **Offline-first**: Toda operación funciona sin conexión a internet
 2. **Veto humano estricto**: El veto humano siempre tiene prioridad sobre cualquier acción
 3. **Soberanía del dato**: Los datos pertenecen al usuario, almacenados localmente
-4. **Trazabilidad inalterable**: EVOLIS + firmas Dilithium (ECDSA P-256)
+4. **Trazabilidad inalterable**: EVOLIS + firmas ECDSA P-256
 5. **Modularidad**: Navaja suiza con 9 modos de operación
 6. **Multiplataforma**: Celular + PC + hardware dedicado, UI adaptativa
 7. **Sincronización P2P**: Syncthing / Bluetooth Mesh / LoRa
@@ -200,7 +200,8 @@ El filtro ético (MoralNode) se aplica a **todos** los comandos, tanto de voz co
 ## Trazabilidad (EVOLIS)
 
 - Hash chain con SHA-256
-- Firmas digitales (ECDSA P-256, equivalente funcional a Dilithium)
+- Firmas digitales ECDSA P-256
+- Roadmap: Dilithium post-cuántico en Q1 2027
 - Verificación de integridad de la cadena completa
 - Exportación de respaldo completo
 - Almacenamiento persistente en IndexedDB
@@ -249,7 +250,7 @@ Defensa activa con lógica ternaria (+1, 0, -1):
 
 ```
 src/
-  lib/crypto.ts              SHA-256, UUID, hash chain, firmas Dilithium
+  lib/crypto.ts              SHA-256, UUID, hash chain, firmas ECDSA P-256
   core/
     MoralNode.ts             Filtro ético (4 reglas inquebrantables)
     EVOLIS.ts                Hash chain + trazabilidad inalterable

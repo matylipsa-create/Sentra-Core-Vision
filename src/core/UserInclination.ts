@@ -1,5 +1,6 @@
 import { skillPerceptionEngine } from './SkillPerceptionEngine';
 import { getHistory, type Inclination } from './DecisionHistory';
+import { moralNode } from './MoralNode';
 
 export interface UserProfile {
   preferredMode: 'smooth' | 'analytical' | 'silent';
@@ -52,6 +53,8 @@ export async function getSuggestions(): Promise<Suggestion[]> {
 export async function applySuggestion(suggestionId: string): Promise<boolean> {
   const suggestion = pendingSuggestions.find((item) => item.id === suggestionId);
   if (!suggestion || suggestion.accepted) return false;
+  const evaluation = moralNode.evaluate(JSON.stringify({ action: 'apply_suggestion', suggestionId }));
+  if (!evaluation.allowed) return false;
   await suggestion.action();
   suggestion.accepted = true;
   return true;

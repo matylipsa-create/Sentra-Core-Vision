@@ -2,10 +2,10 @@ import {
   HashChainEntry,
   createHashChainEntry,
   verifyHashChain,
-  DilithiumSignature,
-  dilithiumSign,
-  dilithiumVerify,
-  generateDilithiumKeyPair,
+  ECDSASignature,
+  ecdsaSign,
+  ecdsaVerify,
+  generateECDSAKeyPair,
   uuidv4,
 } from '../lib/crypto';
 import type { Decision } from './InflectionNode';
@@ -15,7 +15,7 @@ export type ChainIntegrityListener = (valid: boolean) => void;
 export interface EVOLISEvidence {
   id: string;
   entry: HashChainEntry;
-  signature: DilithiumSignature;
+  signature: ECDSASignature;
   module: string;
   action: string;
 }
@@ -62,31 +62,37 @@ export class EVOLIS {
   private publicKey: string = '';
   private privateKey: string = '';
   private integrityListeners: Set<ChainIntegrityListener> = new Set();
+  private writeQueue: Promise<void> = Promise.resolve();
 
   async initialize(): Promise<void> {
     if (this.publicKey) return;
-    const pair = await generateDilithiumKeyPair();
+    const pair = await generateECDSAKeyPair();
     this.publicKey = pair.publicKey;
     this.privateKey = pair.privateKey;
   }
 
   async record(module: string, action: string, data: string): Promise<EVOLISEvidence> {
-    await this.initialize();
-    const index = this.entries.length;
-    const previousHash = index === 0 ? GENESIS_HASH : this.entries[index - 1].entry.hash;
-    const entry = await createHashChainEntry(index, previousHash, `${module}:${action}:${data}`);
-    const message = `${entry.index}:${entry.hash}:${entry.previousHash}`;
-    const signature = await dilithiumSign(message, this.privateKey);
-    signature.publicKey = this.publicKey;
-    const evidence: EVOLISEvidence = {
-      id: uuidv4(),
-      entry,
-      signature,
-      module,
-      action,
-    };
-    this.entries.push(evidence);
-    return evidence;
+    let evidence: EVOLISEvidence | undefined;
+    const operation = this.writeQueue.then(async () => {
+      await this.initialize();
+      const index = this.entries.length;
+      const previousHash = index === 0 ? GENESIS_HASH : this.entries[index - 1].entry.hash;
+      const entry = await createHashChainEntry(index, previousHash, `${module}:${action}:${data}`);
+      const message = `${entry.index}:${entry.hash}:${entry.previousHash}`;
+      const signature = await ecdsaSign(message, this.privateKey);
+      signature.publicKey = this.publicKey;
+      evidence = {
+        id: uuidv4(),
+        entry,
+        signature,
+        module,
+        action,
+      };
+      this.entries.push(evidence);
+    });
+    this.writeQueue = operation.then(() => undefined, () => undefined);
+    await operation;
+    return evidence!;
   }
 
   onIntegrityViolation(listener: ChainIntegrityListener): () => void {
@@ -124,7 +130,7 @@ export class EVOLIS {
     }
     for (const evidence of this.entries) {
       const message = `${evidence.entry.index}:${evidence.entry.hash}:${evidence.entry.previousHash}`;
-      const sigValid = await dilithiumVerify(message, evidence.signature, this.publicKey);
+      const sigValid = await ecdsaVerify(message, evidence.signature, this.publicKey);
       if (!sigValid) {
         this.notifyIntegrityListeners(false);
         return false;
@@ -253,7 +259,7 @@ export class EVOLIS {
     if (!chainValid) return false;
     for (const evidence of identityEntries) {
       const message = `${evidence.entry.index}:${evidence.entry.hash}:${evidence.entry.previousHash}`;
-      const sigValid = await dilithiumVerify(message, evidence.signature, this.publicKey);
+      const sigValid = await ecdsaVerify(message, evidence.signature, this.publicKey);
       if (!sigValid) return false;
     }
     return true;

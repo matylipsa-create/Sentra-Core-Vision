@@ -50,15 +50,15 @@ export async function verifyHashChain(entries: HashChainEntry[]): Promise<boolea
   return true;
 }
 
-export interface DilithiumSignature {
+export interface ECDSASignature {
   signature: string;
   publicKey: string;
   timestamp: number;
 }
 
-const DILITHIUM_KEY_PREFIX = 'sentra_dilithium_';
+const ECDSA_KEY_PREFIX = 'sentra_ecdsa_';
 
-export async function generateDilithiumKeyPair(): Promise<{
+export async function generateECDSAKeyPair(): Promise<{
   publicKey: string;
   privateKey: string;
 }> {
@@ -71,15 +71,15 @@ export async function generateDilithiumKeyPair(): Promise<{
   const privBuf = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
   return {
     publicKey: arrayBufferToBase64(pubBuf),
-    privateKey: DILITHIUM_KEY_PREFIX + arrayBufferToBase64(privBuf),
+    privateKey: ECDSA_KEY_PREFIX + arrayBufferToBase64(privBuf),
   };
 }
 
-export async function dilithiumSign(
+export async function ecdsaSign(
   message: string,
   privateKeyRaw: string
-): Promise<DilithiumSignature> {
-  const privateKey = privateKeyRaw.replace(DILITHIUM_KEY_PREFIX, '');
+): Promise<ECDSASignature> {
+  const privateKey = privateKeyRaw.replace(ECDSA_KEY_PREFIX, '');
   const key = await crypto.subtle.importKey(
     'pkcs8',
     base64ToArrayBuffer(privateKey),
@@ -99,9 +99,9 @@ export async function dilithiumSign(
   };
 }
 
-export async function dilithiumVerify(
+export async function ecdsaVerify(
   message: string,
-  signature: DilithiumSignature,
+  signature: ECDSASignature,
   publicKeyRaw: string
 ): Promise<boolean> {
   try {

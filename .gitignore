@@ -1,2 +1,8 @@
 node_modules/
 .env
+dist/
+*.tsbuildinfo
+vite.config.ts.timestamp-*.mjs
+.vite/
+build/
+*.log
