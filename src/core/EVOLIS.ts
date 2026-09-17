@@ -45,6 +45,18 @@ export interface EventStats {
 
 const GENESIS_HASH = '0'.repeat(64);
 
+function serializeData(value: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (_key, nestedValue: unknown) => {
+    if (typeof nestedValue === 'bigint') return { $bigint: nestedValue.toString() };
+    if (nestedValue && typeof nestedValue === 'object') {
+      if (seen.has(nestedValue)) return '[Circular]';
+      seen.add(nestedValue);
+    }
+    return nestedValue;
+  });
+}
+
 export class EVOLIS {
   private entries: EVOLISEvidence[] = [];
   private publicKey: string = '';
@@ -87,11 +99,11 @@ export class EVOLIS {
   }
 
   async registerDecision(decision: Decision, nodeId: string): Promise<void> {
-    await this.record('sovereignty', 'decision', JSON.stringify({ nodeId, decision }));
+    await this.record('sovereignty', 'decision', serializeData({ nodeId, decision }));
   }
 
   async registerReversion(nodeId: string, reason: string): Promise<void> {
-    await this.record('sovereignty', 'reversion', JSON.stringify({ nodeId, reason }));
+    await this.record('sovereignty', 'reversion', serializeData({ nodeId, reason }));
   }
 
   async verifyChainIntegrity(): Promise<boolean> {
@@ -208,7 +220,11 @@ export class EVOLIS {
   }
 
   exportState(): EVOLISEvidence[] {
-    return JSON.parse(JSON.stringify(this.entries));
+    return JSON.parse(this.exportChain()) as EVOLISEvidence[];
+  }
+
+  exportChain(): string {
+    return serializeData(this.entries);
   }
 
   importState(entries: EVOLISEvidence[]): void {
@@ -245,7 +261,7 @@ export class EVOLIS {
 
   exportIdentity(): string {
     const identityEntries = this.getIdentityHistory();
-    return JSON.stringify(identityEntries, null, 2);
+    return serializeData(identityEntries);
   }
 
   importIdentity(data: string): boolean {

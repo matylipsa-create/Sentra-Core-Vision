@@ -26,6 +26,8 @@ import type { Decision } from '../core/InflectionNode';
 import type { Inclination } from '../core/DecisionHistory';
 import { listNodes } from '../core/InflectionNode';
 import { getHistory, getInclination } from '../core/DecisionHistory';
+import { openSovereigntyDB } from '../core/SovereigntyStorage';
+import { setCurrentSystemState, type SystemSnapshot } from '../core/InflectionNode';
 
 export type ModuleName =
   | 'vision' | 'seguridad' | 'movimiento' | 'juego'
@@ -105,6 +107,7 @@ interface AppContextValue extends AppState {
   setInflectionNodes: (nodes: InflectionNode[]) => void;
   setDecisionHistory: (decisions: Decision[]) => void;
   setUserInclination: (inclination: Inclination | null) => void;
+  restoreSystemSnapshot: (snapshot: SystemSnapshot) => void;
   priorityLevel: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE';
   setPriorityLevel: (level: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE') => void;
   sentinelAlertActive: boolean;
@@ -185,17 +188,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    try {
-      const savedNodes = localStorage.getItem('sentra_inflection_nodes');
-      const savedDecisions = localStorage.getItem('sentra_decision_history');
-      const savedInclination = localStorage.getItem('sentra_user_inclination');
-      setState((s) => ({
-        ...s,
-        inflectionNodes: savedNodes ? JSON.parse(savedNodes) as InflectionNode[] : s.inflectionNodes,
-        decisionHistory: savedDecisions ? JSON.parse(savedDecisions) as Decision[] : s.decisionHistory,
-        userInclination: savedInclination ? JSON.parse(savedInclination) as Inclination : s.userInclination,
-      }));
-    } catch { /* localStorage unavailable or invalid */ }
+    openSovereigntyDB().then(async (db) => {
+      const [nodes, decisions, inclination] = await Promise.all([
+        db.getAll('inflection_nodes'),
+        db.getAll('decision_history'),
+        getInclination(),
+      ]);
+      setState((s) => ({ ...s, inflectionNodes: nodes, decisionHistory: decisions, userInclination: inclination }));
+    }).catch(() => undefined);
     storageService.init().then(() => {
       storageService.getAllEvidence().then((entries) => {
         if (entries.length > 0) {
@@ -223,6 +223,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }).catch(() => undefined);
     });
   }, []);
+
+  useEffect(() => {
+    setCurrentSystemState({
+      ...state,
+      state: state as unknown as Record<string, unknown>,
+    } as Partial<SystemSnapshot>);
+  }, [state]);
 
   useEffect(() => {
     const unsub = bacterialGuardian.subscribe((status) => {
@@ -505,6 +512,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, userInclination: inclination }));
   }, []);
 
+  const restoreSystemSnapshot = useCallback((snapshot: SystemSnapshot) => {
+    if (!snapshot.state || typeof snapshot.state !== 'object') return;
+    setState((s) => ({ ...s, ...(snapshot.state as Partial<AppState>) }));
+  }, []);
+
   const [priorityLevel, setPriorityLevel] = useState<'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE'>('NAVIGATION');
   const [sentinelAlertActive, setSentinelAlertActive] = useState<boolean>(false);
   const [spatialAudioEnabled, setSpatialAudioEnabled] = useState<boolean>(true);
@@ -533,14 +545,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [priorityLevel, sentinelAlertActive, spatialAudioEnabled, perimeterConfig]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('sentra_inflection_nodes', JSON.stringify(state.inflectionNodes));
-      localStorage.setItem('sentra_decision_history', JSON.stringify(state.decisionHistory));
-      localStorage.setItem('sentra_user_inclination', JSON.stringify(state.userInclination));
-    } catch { /* localStorage unavailable */ }
-  }, [state.inflectionNodes, state.decisionHistory, state.userInclination]);
-
   const value: AppContextValue = {
     ...state, setModule, toggleVoice, toggleHumanVeto,
     setPowerMode, setSyncTransport, processCommand, setGeminiRemote,
@@ -554,7 +558,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addFieldMarker, exportFieldLog,
     triggerBuild, optimizeBuildForLowEnd,
     toggleCamera, setSensorsConnected,
-    setInflectionNodes, setDecisionHistory, setUserInclination,
+    setInflectionNodes, setDecisionHistory, setUserInclination, restoreSystemSnapshot,
     priorityLevel, setPriorityLevel,
     sentinelAlertActive, setSentinelAlertActive,
     spatialAudioEnabled, setSpatialAudioEnabled,

@@ -11,8 +11,9 @@ import { taskDecomposer } from '../core/TaskDecomposer';
 import { cognitiveLoadManager } from '../core/CognitiveLoadManager';
 import { skillPerceptionEngine, type Insight } from '../core/SkillPerceptionEngine';
 import { useApp } from '../context/AppContext';
-import { getHistory } from '../core/DecisionHistory';
+import { getHistory, getInclination } from '../core/DecisionHistory';
 import { listNodes, revertToNode } from '../core/InflectionNode';
+import { applySuggestion, computeInclination, getSuggestions, type Suggestion } from '../core/UserInclination';
 
 const LABEL_ES: Record<string, string> = {
   person: 'persona',
@@ -121,7 +122,7 @@ interface VisionScreenProps {
 }
 
 export function VisionScreen({ onToggle }: VisionScreenProps) {
-  const { decisionHistory, inflectionNodes, userInclination, setDecisionHistory, setInflectionNodes } = useApp();
+  const { decisionHistory, inflectionNodes, userInclination, setDecisionHistory, setInflectionNodes, setUserInclination, restoreSystemSnapshot } = useApp();
   const [isActive, setIsActive] = useState(false);
   const [lastDescription, setLastDescription] = useState('');
   const [detectionCount, setDetectionCount] = useState(0);
@@ -133,6 +134,8 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   const [uiMode, setUiMode] = useState<AdaptiveUIMode>(adaptiveUIMode.getMode());
   const [insights, setInsights] = useState<Insight[]>([]);
   const [openPanel, setOpenPanel] = useState<'history' | 'reversion' | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestedMode, setSuggestedMode] = useState<AdaptiveUIMode | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastTapRef = useRef(0);
   const lastSpokenRef = useRef<string>('');
@@ -355,9 +358,15 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
 
   const openHistory = useCallback(async () => {
     const history = await getHistory(20);
+    const inclination = await getInclination();
+    const profile = await computeInclination();
+    const nextSuggestions = await getSuggestions();
     setDecisionHistory(history);
+    setUserInclination(inclination);
+    setSuggestedMode(profile.preferredMode);
+    setSuggestions(nextSuggestions);
     setOpenPanel('history');
-  }, [setDecisionHistory]);
+  }, [setDecisionHistory, setUserInclination]);
 
   const openReversion = useCallback(async () => {
     const nodes = await listNodes(20);
@@ -366,10 +375,23 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   }, [setInflectionNodes]);
 
   const handleRevert = useCallback(async (nodeId: string) => {
-    if (await revertToNode(nodeId)) {
+    if (!window.confirm('¿Querés restaurar este estado del sistema?')) return;
+    if (await revertToNode(nodeId, restoreSystemSnapshot)) {
       setOpenPanel(null);
     }
-  }, []);
+  }, [restoreSystemSnapshot]);
+
+  const handleSuggestion = useCallback((suggestion: Suggestion) => {
+    if (!window.confirm(`¿Aplicar sugerencia? ${suggestion.description}`)) return;
+    void applySuggestion(suggestion.id).then((applied) => {
+      if (!applied) return;
+      if (suggestion.id === 'suggest-preferred-mode' && suggestedMode) {
+        adaptiveUIMode.setMode(suggestedMode);
+        setUiMode(suggestedMode);
+      }
+      setSuggestions((current) => current.map((item) => item.id === suggestion.id ? { ...item, accepted: true } : item));
+    });
+  }, [suggestedMode]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -454,6 +476,12 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
           <strong>Historial</strong>
           {decisionHistory.length === 0 ? <p>No hay decisiones registradas.</p> : decisionHistory.slice(0, 10).map((decision) => (
             <p key={decision.id ?? decision.timestamp}>{decision.type}: {decision.description}</p>
+          ))}
+          {suggestions.map((suggestion) => !suggestion.accepted && (
+            <p key={suggestion.id}>
+              {suggestion.description}{' '}
+              <button className="tts-rate-btn" onClick={() => handleSuggestion(suggestion)}>Aplicar</button>
+            </p>
           ))}
           <button className="tts-rate-btn" onClick={() => setOpenPanel(null)}>Cerrar</button>
         </div>
