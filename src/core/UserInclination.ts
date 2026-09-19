@@ -1,6 +1,8 @@
 import { skillPerceptionEngine } from './SkillPerceptionEngine';
 import { getHistory, type Inclination } from './DecisionHistory';
 import { moralNode } from './MoralNode';
+import { adaptiveUIMode } from './AdaptiveUIMode';
+import { evolis } from './EVOLIS';
 
 export interface UserProfile {
   preferredMode: 'smooth' | 'analytical' | 'silent';
@@ -45,7 +47,10 @@ export async function getSuggestions(): Promise<Suggestion[]> {
     id: 'suggest-preferred-mode',
     description: `Podrías probar el modo ${profile.preferredMode}.`,
     accepted: false,
-    action: async () => undefined,
+    action: async () => {
+      adaptiveUIMode.setMode(profile.preferredMode);
+      await evolis.record('suggestion', 'applied', 'suggest-preferred-mode');
+    },
   }];
   return pendingSuggestions;
 }

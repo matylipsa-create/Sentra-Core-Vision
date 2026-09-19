@@ -1,5 +1,6 @@
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import type { DBSchema, IDBPDatabase } from 'idb';
 import { EVOLISEvidence } from '../core/EVOLIS';
+import { openDatabase, withStore } from '../core/IndexedDBHelper';
 
 interface SentraDB extends DBSchema {
   evolis: { key: string; value: EVOLISEvidence };
@@ -15,51 +16,49 @@ export class StorageService {
 
   async init(): Promise<void> {
     if (this.db) return;
-    this.db = await openDB<SentraDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains('evolis'))
-          db.createObjectStore('evolis', { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('state'))
-          db.createObjectStore('state');
-        if (!db.objectStoreNames.contains('settings'))
-          db.createObjectStore('settings');
-      },
+    this.db = await openDatabase<SentraDB>(DB_NAME, DB_VERSION, (db) => {
+      if (!db.objectStoreNames.contains('evolis'))
+        db.createObjectStore('evolis', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('state'))
+        db.createObjectStore('state');
+      if (!db.objectStoreNames.contains('settings'))
+        db.createObjectStore('settings');
     });
   }
 
   async saveEvidence(evidence: EVOLISEvidence): Promise<void> {
     await this.init();
-    await this.db!.put('evolis', evidence);
+    await withStore(this.db!, 'evolis', 'readwrite', (store) => store.put(evidence));
   }
 
   async getAllEvidence(): Promise<EVOLISEvidence[]> {
     await this.init();
-    return this.db!.getAll('evolis');
+    return withStore(this.db!, 'evolis', 'readonly', (store) => store.getAll());
   }
 
   async clearEvidence(): Promise<void> {
     await this.init();
-    await this.db!.clear('evolis');
+    await withStore(this.db!, 'evolis', 'readwrite', (store) => store.clear());
   }
 
   async saveState(key: string, value: unknown): Promise<void> {
     await this.init();
-    await this.db!.put('state', value, key);
+    await withStore(this.db!, 'state', 'readwrite', (store) => store.put(value, key));
   }
 
   async loadState<T>(key: string): Promise<T | undefined> {
     await this.init();
-    return this.db!.get('state', key) as Promise<T | undefined>;
+    return withStore(this.db!, 'state', 'readonly', (store) => store.get(key) as Promise<T | undefined>);
   }
 
   async saveSetting(key: string, value: unknown): Promise<void> {
     await this.init();
-    await this.db!.put('settings', value, key);
+    await withStore(this.db!, 'settings', 'readwrite', (store) => store.put(value, key));
   }
 
   async loadSetting<T>(key: string): Promise<T | undefined> {
     await this.init();
-    return this.db!.get('settings', key) as Promise<T | undefined>;
+    return withStore(this.db!, 'settings', 'readonly', (store) => store.get(key) as Promise<T | undefined>);
   }
 
   async exportAll(): Promise<{
@@ -68,14 +67,14 @@ export class StorageService {
     settings: { key: string; value: unknown }[];
   }> {
     await this.init();
-    const evidence = await this.db!.getAll('evolis');
-    const stateKeys = await this.db!.getAllKeys('state');
+    const evidence = await withStore(this.db!, 'evolis', 'readonly', (store) => store.getAll());
+    const stateKeys = await withStore(this.db!, 'state', 'readonly', (store) => store.getAllKeys());
     const state = await Promise.all(
-      stateKeys.map(async (key) => ({ key: key as string, value: await this.db!.get('state', key) }))
+      stateKeys.map(async (key) => ({ key: key as string, value: await withStore(this.db!, 'state', 'readonly', (store) => store.get(key)) }))
     );
-    const settingKeys = await this.db!.getAllKeys('settings');
+    const settingKeys = await withStore(this.db!, 'settings', 'readonly', (store) => store.getAllKeys());
     const settings = await Promise.all(
-      settingKeys.map(async (key) => ({ key: key as string, value: await this.db!.get('settings', key) }))
+      settingKeys.map(async (key) => ({ key: key as string, value: await withStore(this.db!, 'settings', 'readonly', (store) => store.get(key)) }))
     );
     return { evidence, state, settings };
   }
@@ -86,12 +85,18 @@ export class StorageService {
     settings: { key: string; value: unknown }[];
   }): Promise<void> {
     await this.init();
-    await this.db!.clear('evolis');
-    for (const e of data.evidence) await this.db!.put('evolis', e);
-    await this.db!.clear('state');
-    for (const s of data.state) await this.db!.put('state', s.value, s.key);
-    await this.db!.clear('settings');
-    for (const s of data.settings) await this.db!.put('settings', s.value, s.key);
+    await withStore(this.db!, 'evolis', 'readwrite', async (store) => {
+      await store.clear();
+      for (const evidence of data.evidence) await store.put(evidence);
+    });
+    await withStore(this.db!, 'state', 'readwrite', async (store) => {
+      await store.clear();
+      for (const state of data.state) await store.put(state.value, state.key);
+    });
+    await withStore(this.db!, 'settings', 'readwrite', async (store) => {
+      await store.clear();
+      for (const setting of data.settings) await store.put(setting.value, setting.key);
+    });
   }
 
   async downloadExport(): Promise<void> {

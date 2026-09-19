@@ -39,7 +39,8 @@ export async function getInclination(): Promise<Inclination> {
   history.forEach((decision) => { byType[decision.type] = (byType[decision.type] ?? 0) + 1; });
   const dominant = Object.entries(byType).sort((a, b) => b[1] - a[1])[0];
   const dominantType = dominant?.[0] ?? '';
-  const confidence = history.length === 0 ? 0 : (dominant?.[1] ?? 0) / history.length;
+  const rawConfidence = history.length === 0 ? 0 : (dominant?.[1] ?? 0) / history.length;
+  const confidence = rawConfidence * Math.min(1, history.length / 5);
   return {
     totalDecisions: history.length,
     byType,

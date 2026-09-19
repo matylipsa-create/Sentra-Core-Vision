@@ -13,7 +13,7 @@ import { skillPerceptionEngine, type Insight } from '../core/SkillPerceptionEngi
 import { useApp } from '../context/AppContext';
 import { getHistory, getInclination } from '../core/DecisionHistory';
 import { listNodes, revertToNode } from '../core/InflectionNode';
-import { applySuggestion, computeInclination, getSuggestions, type Suggestion } from '../core/UserInclination';
+import { applySuggestion, getSuggestions, type Suggestion } from '../core/UserInclination';
 
 const LABEL_ES: Record<string, string> = {
   person: 'persona',
@@ -135,7 +135,6 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [openPanel, setOpenPanel] = useState<'history' | 'reversion' | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [suggestedMode, setSuggestedMode] = useState<AdaptiveUIMode | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastTapRef = useRef(0);
   const lastSpokenRef = useRef<string>('');
@@ -359,11 +358,9 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   const openHistory = useCallback(async () => {
     const history = await getHistory(20);
     const inclination = await getInclination();
-    const profile = await computeInclination();
     const nextSuggestions = await getSuggestions();
     setDecisionHistory(history);
     setUserInclination(inclination);
-    setSuggestedMode(profile.preferredMode);
     setSuggestions(nextSuggestions);
     setOpenPanel('history');
   }, [setDecisionHistory, setUserInclination]);
@@ -385,13 +382,10 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
     if (!window.confirm(`¿Aplicar sugerencia? ${suggestion.description}`)) return;
     void applySuggestion(suggestion.id).then((applied) => {
       if (!applied) return;
-      if (suggestion.id === 'suggest-preferred-mode' && suggestedMode) {
-        adaptiveUIMode.setMode(suggestedMode);
-        setUiMode(suggestedMode);
-      }
+      setUiMode(adaptiveUIMode.getMode());
       setSuggestions((current) => current.map((item) => item.id === suggestion.id ? { ...item, accepted: true } : item));
     });
-  }, [suggestedMode]);
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {

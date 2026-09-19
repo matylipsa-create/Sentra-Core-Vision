@@ -1,5 +1,6 @@
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import type { DBSchema, IDBPDatabase } from 'idb';
 import { evolis } from './EVOLIS';
+import { openDatabase, withStore } from './IndexedDBHelper';
 
 export interface UsageContext {
   timestamp: number;
@@ -58,12 +59,10 @@ const STORE_NAME = 'skill_patterns';
 const LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 
 async function openSkillPatternDB(): Promise<IDBPDatabase<SkillPatternDB>> {
-  return openDB<SkillPatternDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      }
-    },
+  return openDatabase<SkillPatternDB>(DB_NAME, DB_VERSION, (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+    }
   });
 }
 
@@ -85,13 +84,13 @@ export class SkillPerceptionEngine {
       },
     };
 
-    await db.put(STORE_NAME, record);
+    await withStore(db, STORE_NAME, 'readwrite', (store) => store.put(record));
   }
 
   async detectPattern(): Promise<Pattern | null> {
     const db = await openSkillPatternDB();
     const now = Date.now();
-    const records = (await db.getAll(STORE_NAME)) as SkillPatternRecord[];
+    const records = await withStore(db, STORE_NAME, 'readonly', (store) => store.getAll()) as SkillPatternRecord[];
     const contexts = records.filter((record) => {
       if (record.kind !== 'context' || !record.context) return false;
       return now - record.context.timestamp <= LOOKBACK_MS;
@@ -160,13 +159,13 @@ export class SkillPerceptionEngine {
       pattern: best,
     };
 
-    await db.put(STORE_NAME, patternRecord);
+    await withStore(db, STORE_NAME, 'readwrite', (store) => store.put(patternRecord));
     return best;
   }
 
   async getLearnedPatterns(): Promise<Pattern[]> {
     const db = await openSkillPatternDB();
-    const records = (await db.getAll(STORE_NAME)) as SkillPatternRecord[];
+    const records = await withStore(db, STORE_NAME, 'readonly', (store) => store.getAll()) as SkillPatternRecord[];
     return records
       .filter((record) => record.kind === 'pattern' && record.pattern)
       .map((record) => record.pattern!)
@@ -216,12 +215,12 @@ export class SkillPerceptionEngine {
 
     const db = await openSkillPatternDB();
     for (const pattern of patterns) {
-      await db.put(STORE_NAME, {
+      await withStore(db, STORE_NAME, 'readwrite', (store) => store.put({
         kind: 'pattern',
         id: `evolis-${pattern.id}`,
         timestamp: Date.now(),
         pattern,
-      });
+      }));
     }
   }
 
