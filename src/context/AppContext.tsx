@@ -9,7 +9,7 @@ import { perceptionEngine, PerceptionData } from '../core/PerceptionEngine';
 import { syncManager, SyncTransport } from '../core/SyncManager';
 import { voiceManager } from '../services/VoiceManager';
 import { storageService } from '../services/StorageService';
-import { PowerMode } from '../core/PowerManager';
+import { EnergySource, PowerMode } from '../core/PowerManager';
 import { bioSoftware, BioProtocol, BioSession } from '../core/BioSoftwareInterface';
 import { bacterialGuardian, GuardianStatus } from '../core/BacterialGuardian';
 import { usbService, PortStatus } from '../services/USBService';
@@ -70,6 +70,9 @@ export interface AppState {
   inflectionNodes: InflectionNode[];
   decisionHistory: Decision[];
   userInclination: Inclination | null;
+  energySource: EnergySource;
+  energyBudget: number;
+  harvestedEnergy: number;
 }
 
 interface AppContextValue extends AppState {
@@ -107,6 +110,9 @@ interface AppContextValue extends AppState {
   setInflectionNodes: (nodes: InflectionNode[]) => void;
   setDecisionHistory: (decisions: Decision[]) => void;
   setUserInclination: (inclination: Inclination | null) => void;
+  setEnergySource: (source: EnergySource) => void;
+  setEnergyBudget: (budget: number) => void;
+  setHarvestedEnergy: (energy: number) => void;
   restoreSystemSnapshot: (snapshot: SystemSnapshot) => void;
   priorityLevel: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE';
   setPriorityLevel: (level: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE') => void;
@@ -162,6 +168,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       savedCamera = localStorage.getItem('sentra_camera_active') === 'true';
     } catch { /* localStorage unavailable */ }
 
+    let savedEnergySource: EnergySource = 'battery';
+    let savedEnergyBudget = 100;
+    let savedHarvestedEnergy = 0;
+    try {
+      const source = localStorage.getItem('sentra_energy_source');
+      if (source === 'grid' || source === 'battery' || source === 'harvesting' || source === 'hybrid') savedEnergySource = source;
+      const budget = Number(localStorage.getItem('sentra_energy_budget'));
+      if (Number.isFinite(budget)) savedEnergyBudget = Math.max(0, Math.min(100, budget));
+      const harvested = Number(localStorage.getItem('sentra_harvested_energy'));
+      if (Number.isFinite(harvested)) savedHarvestedEnergy = Math.max(0, Math.min(1000, harvested));
+    } catch { /* localStorage unavailable */ }
+
     return {
       activeModule: 'vision', voiceEnabled: true, humanVeto: false,
       powerMode: 'normal', syncTransport: 'offline',
@@ -184,6 +202,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       inflectionNodes: [],
       decisionHistory: [],
       userInclination: null,
+      energySource: savedEnergySource,
+      energyBudget: savedEnergyBudget,
+      harvestedEnergy: savedHarvestedEnergy,
     };
   });
 
@@ -512,6 +533,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, userInclination: inclination }));
   }, []);
 
+  const setEnergySource = useCallback((source: EnergySource) => {
+    try { localStorage.setItem('sentra_energy_source', source); } catch { /* localStorage unavailable */ }
+    setState((s) => ({ ...s, energySource: source }));
+  }, []);
+
+  const setEnergyBudget = useCallback((budget: number) => {
+    const next = Math.max(0, Math.min(100, budget));
+    try { localStorage.setItem('sentra_energy_budget', String(next)); } catch { /* localStorage unavailable */ }
+    setState((s) => ({ ...s, energyBudget: next }));
+  }, []);
+
+  const setHarvestedEnergy = useCallback((energy: number) => {
+    const next = Math.max(0, Math.min(1000, energy));
+    try { localStorage.setItem('sentra_harvested_energy', String(next)); } catch { /* localStorage unavailable */ }
+    setState((s) => ({ ...s, harvestedEnergy: next }));
+  }, []);
+
   const restoreSystemSnapshot = useCallback((snapshot: SystemSnapshot) => {
     if (!snapshot.state || typeof snapshot.state !== 'object') return;
     setState((s) => ({ ...s, ...(snapshot.state as Partial<AppState>) }));
@@ -559,6 +597,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     triggerBuild, optimizeBuildForLowEnd,
     toggleCamera, setSensorsConnected,
     setInflectionNodes, setDecisionHistory, setUserInclination, restoreSystemSnapshot,
+    setEnergySource, setEnergyBudget, setHarvestedEnergy,
     priorityLevel, setPriorityLevel,
     sentinelAlertActive, setSentinelAlertActive,
     spatialAudioEnabled, setSpatialAudioEnabled,

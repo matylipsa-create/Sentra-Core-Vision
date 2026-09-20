@@ -1,4 +1,7 @@
+import { evolis } from './EVOLIS';
+
 export type PowerMode = 'ultra_ahorro' | 'normal' | 'alto_rendimiento';
+export type EnergySource = 'grid' | 'battery' | 'harvesting' | 'hybrid';
 
 export interface PowerProfile {
   mode: PowerMode;
@@ -64,6 +67,9 @@ export class PowerManager {
   private currentMode: PowerMode = 'normal';
   private batteryLevel: number | null = null;
   private isCharging: boolean = false;
+  private _energySource: EnergySource = 'battery';
+  private _harvestedEnergy: number = 0;
+  private _energyBudget: number = 100;
 
   getProfile(): PowerProfile {
     return PROFILES[this.currentMode];
@@ -125,6 +131,43 @@ export class PowerManager {
 
   getAllProfiles(): PowerProfile[] {
     return Object.values(PROFILES);
+  }
+
+  // ===== RF ENERGY HARVESTING (Q1 2027) =====
+
+  setEnergySource(source: EnergySource): void {
+    const previous = this._energySource;
+    this._energySource = source;
+    void evolis.record('power', 'source_change', JSON.stringify({ from: previous, to: source }));
+  }
+
+  getEnergySource(): string {
+    return this._energySource;
+  }
+
+  setEnergyBudget(budget: number): void {
+    this._energyBudget = Math.max(0, Math.min(100, budget));
+  }
+
+  getEnergyBudget(): number {
+    return this._energyBudget;
+  }
+
+  addHarvestedEnergy(mWh: number): void {
+    this._harvestedEnergy += mWh;
+    if (this._harvestedEnergy > 1000) this._harvestedEnergy = 1000;
+  }
+
+  getHarvestedEnergy(): number {
+    return this._harvestedEnergy;
+  }
+
+  consumeEnergy(mWh: number): boolean {
+    if (this._harvestedEnergy >= mWh) {
+      this._harvestedEnergy -= mWh;
+      return true;
+    }
+    return false;
   }
 }
 

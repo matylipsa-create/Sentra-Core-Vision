@@ -7,6 +7,7 @@
 
 import { offlineLogger } from './OfflineLogger';
 import { eventRouter } from './EventRouter';
+import { powerManager } from './PowerManager';
 
 export type FailoverState = 'stable' | 'degraded' | 'backup_active' | 'critical';
 
@@ -37,6 +38,7 @@ class FailoverManager {
   private totalErrors = 0;
   private history: FailoverEntry[] = [];
   private listeners = new Set<FailoverListener>();
+  private energyFailoverState: 'grid' | 'harvesting' | 'battery' = 'battery';
 
   registerBackup(id: string, fn: BackupFn): void {
     this.backups.set(id, fn);
@@ -70,6 +72,20 @@ class FailoverManager {
     eventRouter.sendAlert('warning', 'Cambiando a nodo secundario de respaldo');
     offlineLogger.log({ type: 'failover_switch', message: 'Cambio a backup manual' });
     this.notify();
+  }
+
+  onGridFailure(): void {
+    powerManager.setEnergySource('harvesting');
+    this.energyFailoverState = 'harvesting';
+  }
+
+  onGridRestore(): void {
+    powerManager.setEnergySource('grid');
+    this.energyFailoverState = 'grid';
+  }
+
+  getFailoverState(): 'grid' | 'harvesting' | 'battery' {
+    return this.energyFailoverState;
   }
 
   getFailoverStatus(): FailoverStatus {
