@@ -41,7 +41,7 @@ Sentra Core v4.0.0_BIO adopta una arquitectura de dos capas:
 |--------|----------------|
 | PerceptionEngine | Vision, audio, IMU, STF, GPS — procesamiento de percepcion |
 | MoralNode | Filtro etico (4 reglas inquebrantables) |
-| EVOLIS | Hash chain SHA-256 + firmas ECDSA P-256 (Dilithium) |
+| EVOLIS | Hash chain SHA-256 + firmas ECDSA P-256 |
 | BioSoftwareInterface | Inferencia activa, placebos, reencuadre, coherencia cardiaca |
 | SyncManager | Sincronizacion P2P (Syncthing / Bluetooth Mesh / LoRa) |
 | ModuleManager | Navaja suiza — 9+ modos de operacion |
@@ -216,7 +216,7 @@ frontend/
 1. **Offline-first**: Toda operacion funciona sin conexion a internet
 2. **Veto humano estricto**: El veto humano siempre tiene prioridad
 3. **Soberania del dato**: Los datos pertenecen al usuario, almacenados localmente
-4. **Trazabilidad inalterable**: EVOLIS + firmas Dilithium (ECDSA P-256)
+4. **Trazabilidad inalterable**: EVOLIS + firmas ECDSA P-256
 5. **Modularidad**: Navaja suisa con 9+ modos de operacion
 6. **Multiplataforma**: Celular + PC, UI adaptativa
 7. **Sincronizacion P2P**: Syncthing / Bluetooth Mesh / LoRa
@@ -229,3 +229,7 @@ frontend/
 - **Vision**: Asistencia visual con deteccion offline + descripcion por voz
 
 Ambas verticales reutilizan el motor completo via la API server.
+
+### Roadmap criptografico
+
+Dilithium post-cuantico en Q1 2027.

@@ -9,6 +9,7 @@ import {
   uuidv4,
 } from '../lib/crypto';
 import type { Decision } from './InflectionNode';
+import { storageService } from '../services/StorageService';
 
 export type ChainIntegrityListener = (valid: boolean) => void;
 
@@ -66,9 +67,22 @@ export class EVOLIS {
 
   async initialize(): Promise<void> {
     if (this.publicKey) return;
-    const pair = await generateECDSAKeyPair();
-    this.publicKey = pair.publicKey;
-    this.privateKey = pair.privateKey;
+    try {
+      const saved = await storageService.loadEvolisKey();
+      if (saved) {
+        this.publicKey = saved.publicKey;
+        this.privateKey = saved.privateKey;
+        return;
+      }
+      const pair = await generateECDSAKeyPair();
+      await storageService.saveEvolisKey(pair);
+      this.publicKey = pair.publicKey;
+      this.privateKey = pair.privateKey;
+    } catch {
+      const pair = await generateECDSAKeyPair();
+      this.publicKey = pair.publicKey;
+      this.privateKey = pair.privateKey;
+    }
   }
 
   async record(module: string, action: string, data: string): Promise<EVOLISEvidence> {
@@ -105,11 +119,13 @@ export class EVOLIS {
   }
 
   async registerDecision(decision: Decision, nodeId: string): Promise<void> {
-    await this.record('sovereignty', 'decision', serializeData({ nodeId, decision }));
+    await this.initialize();
+    await this.record('sovereignty', 'decision', serializeData({ nodeId, decision, publicKey: this.publicKey }));
   }
 
   async registerReversion(nodeId: string, reason: string): Promise<void> {
-    await this.record('sovereignty', 'reversion', serializeData({ nodeId, reason }));
+    await this.initialize();
+    await this.record('sovereignty', 'reversion', serializeData({ nodeId, reason, publicKey: this.publicKey }));
   }
 
   async verifyChainIntegrity(): Promise<boolean> {
@@ -130,7 +146,7 @@ export class EVOLIS {
     }
     for (const evidence of this.entries) {
       const message = `${evidence.entry.index}:${evidence.entry.hash}:${evidence.entry.previousHash}`;
-      const sigValid = await ecdsaVerify(message, evidence.signature, this.publicKey);
+      const sigValid = await ecdsaVerify(message, evidence.signature, evidence.signature.publicKey);
       if (!sigValid) {
         this.notifyIntegrityListeners(false);
         return false;
@@ -259,7 +275,7 @@ export class EVOLIS {
     if (!chainValid) return false;
     for (const evidence of identityEntries) {
       const message = `${evidence.entry.index}:${evidence.entry.hash}:${evidence.entry.previousHash}`;
-      const sigValid = await ecdsaVerify(message, evidence.signature, this.publicKey);
+      const sigValid = await ecdsaVerify(message, evidence.signature, evidence.signature.publicKey);
       if (!sigValid) return false;
     }
     return true;

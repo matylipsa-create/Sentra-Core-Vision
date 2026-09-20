@@ -55,6 +55,10 @@ export class MoralNode {
     return this.humanVetoActive;
   }
 
+  getVetoStatus(): boolean {
+    return this.humanVetoActive;
+  }
+
   evaluate(command: string, input?: MoralInput): MoralEvaluation {
     const lower = normalize(command);
     const decisions: MoralDecision[] = [];

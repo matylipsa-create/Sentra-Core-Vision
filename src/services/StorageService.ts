@@ -1,15 +1,16 @@
 import type { DBSchema, IDBPDatabase } from 'idb';
-import { EVOLISEvidence } from '../core/EVOLIS';
+import type { EVOLISEvidence } from '../core/EVOLIS';
 import { openDatabase, withStore } from '../core/IndexedDBHelper';
 
 interface SentraDB extends DBSchema {
   evolis: { key: string; value: EVOLISEvidence };
+  evolis_keys: { key: string; value: { publicKey: string; privateKey: string } };
   state: { key: string; value: unknown };
   settings: { key: string; value: unknown };
 }
 
 const DB_NAME = 'sentra-core';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export class StorageService {
   private db: IDBPDatabase<SentraDB> | null = null;
@@ -19,6 +20,8 @@ export class StorageService {
     this.db = await openDatabase<SentraDB>(DB_NAME, DB_VERSION, (db) => {
       if (!db.objectStoreNames.contains('evolis'))
         db.createObjectStore('evolis', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('evolis_keys'))
+        db.createObjectStore('evolis_keys');
       if (!db.objectStoreNames.contains('state'))
         db.createObjectStore('state');
       if (!db.objectStoreNames.contains('settings'))
@@ -59,6 +62,16 @@ export class StorageService {
   async loadSetting<T>(key: string): Promise<T | undefined> {
     await this.init();
     return withStore(this.db!, 'settings', 'readonly', (store) => store.get(key) as Promise<T | undefined>);
+  }
+
+  async saveEvolisKey(key: { publicKey: string; privateKey: string }): Promise<void> {
+    await this.init();
+    await withStore(this.db!, 'evolis_keys', 'readwrite', (store) => store.put(key, 'signing-key'));
+  }
+
+  async loadEvolisKey(): Promise<{ publicKey: string; privateKey: string } | undefined> {
+    await this.init();
+    return withStore(this.db!, 'evolis_keys', 'readonly', (store) => store.get('signing-key'));
   }
 
   async exportAll(): Promise<{

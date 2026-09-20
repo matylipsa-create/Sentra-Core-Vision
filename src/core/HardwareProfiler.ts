@@ -31,6 +31,8 @@ function getWindow(): Window | null {
 }
 
 export class HardwareProfiler {
+  private batteryProfile: { level: number; charging: boolean } | null = null;
+
   detectPlatform(): HardwarePlatform {
     const currentNavigator = getNavigator();
     const userAgent = currentNavigator?.userAgent ?? '';
@@ -62,12 +64,22 @@ export class HardwareProfiler {
 
   getEnergyProfile(): { source: string; level: number; charging: boolean } {
     const currentNavigator = getNavigator();
-    const battery = (currentNavigator as Navigator & {
+    const batteryApi = (currentNavigator as Navigator & {
       getBattery?: () => Promise<{ level: number; charging: boolean }>;
     } | null)?.getBattery;
+    if (batteryApi) {
+      void batteryApi().then((battery) => {
+        this.batteryProfile = { level: battery.level * 100, charging: battery.charging };
+      }).catch(() => undefined);
+      if (this.batteryProfile) {
+        return { source: 'battery', ...this.batteryProfile };
+      }
+    }
+    const memory = currentNavigator?.deviceMemory ?? 4;
+    const level = memory <= 2 ? 30 : memory <= 4 ? 60 : 100;
     return {
-      source: this.detectPlatform() === 'totem' ? 'harvesting' : this.detectPlatform() === 'desktop' ? 'grid' : 'battery',
-      level: battery ? 100 : 100,
+      source: batteryApi ? 'battery' : 'unknown',
+      level,
       charging: false,
     };
   }

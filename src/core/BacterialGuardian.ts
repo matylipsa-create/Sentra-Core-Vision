@@ -1,6 +1,7 @@
 import { evolis } from './EVOLIS';
 import { usbService, USBDeviceInfo } from '../services/USBService';
 import { ternaryEthics, Trit, TernaryEvaluation, TRIT_POS, TRIT_NEG } from './TernaryMath';
+import { moralNode } from './MoralNode';
 
 export type GuardianState = 'dormant' | 'active' | 'alert' | 'quarantine';
 
@@ -229,12 +230,16 @@ export class BacterialGuardian {
   getOverallTrust(): TernaryEvaluation {
     const chainValid = this.lastChainValid;
     const usbTrit = usbService.evaluateTrust();
-    return ternaryEthics.evaluate(
+    const evaluation = ternaryEthics.evaluate(
       true,
-      false,
+      moralNode.getVetoStatus(),
       chainValid,
       usbTrit !== TRIT_NEG
     );
+    if (moralNode.getVetoStatus()) {
+      return { ...evaluation, value: TRIT_NEG, label: 'negative', score: -1, confidence: 1 };
+    }
+    return evaluation;
   }
 
   getUsbTrust(): Trit {
