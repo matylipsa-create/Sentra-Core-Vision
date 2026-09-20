@@ -10,6 +10,8 @@ import { syncManager, SyncTransport } from '../core/SyncManager';
 import { voiceManager } from '../services/VoiceManager';
 import { storageService } from '../services/StorageService';
 import { EnergySource, PowerMode } from '../core/PowerManager';
+import type { HardwareProfile } from '../core/HardwareProfiler';
+import type { OptimalConfig } from '../core/AutoRegulator';
 import { bioSoftware, BioProtocol, BioSession } from '../core/BioSoftwareInterface';
 import { bacterialGuardian, GuardianStatus } from '../core/BacterialGuardian';
 import { usbService, PortStatus } from '../services/USBService';
@@ -73,6 +75,8 @@ export interface AppState {
   energySource: EnergySource;
   energyBudget: number;
   harvestedEnergy: number;
+  hardwareProfile: HardwareProfile | null;
+  optimalConfig: OptimalConfig | null;
 }
 
 interface AppContextValue extends AppState {
@@ -113,6 +117,8 @@ interface AppContextValue extends AppState {
   setEnergySource: (source: EnergySource) => void;
   setEnergyBudget: (budget: number) => void;
   setHarvestedEnergy: (energy: number) => void;
+  setHardwareProfile: (profile: HardwareProfile | null) => void;
+  setOptimalConfig: (config: OptimalConfig | null) => void;
   restoreSystemSnapshot: (snapshot: SystemSnapshot) => void;
   priorityLevel: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE';
   setPriorityLevel: (level: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE') => void;
@@ -171,6 +177,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let savedEnergySource: EnergySource = 'battery';
     let savedEnergyBudget = 100;
     let savedHarvestedEnergy = 0;
+    let savedHardwareProfile: HardwareProfile | null = null;
+    let savedOptimalConfig: OptimalConfig | null = null;
     try {
       const source = localStorage.getItem('sentra_energy_source');
       if (source === 'grid' || source === 'battery' || source === 'harvesting' || source === 'hybrid') savedEnergySource = source;
@@ -178,6 +186,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (Number.isFinite(budget)) savedEnergyBudget = Math.max(0, Math.min(100, budget));
       const harvested = Number(localStorage.getItem('sentra_harvested_energy'));
       if (Number.isFinite(harvested)) savedHarvestedEnergy = Math.max(0, Math.min(1000, harvested));
+      const profile = localStorage.getItem('sentra_hardware_profile');
+      const config = localStorage.getItem('sentra_optimal_config');
+      if (profile) savedHardwareProfile = JSON.parse(profile) as HardwareProfile;
+      if (config) savedOptimalConfig = JSON.parse(config) as OptimalConfig;
     } catch { /* localStorage unavailable */ }
 
     return {
@@ -205,6 +217,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       energySource: savedEnergySource,
       energyBudget: savedEnergyBudget,
       harvestedEnergy: savedHarvestedEnergy,
+      hardwareProfile: savedHardwareProfile,
+      optimalConfig: savedOptimalConfig,
     };
   });
 
@@ -550,6 +564,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, harvestedEnergy: next }));
   }, []);
 
+  const setHardwareProfile = useCallback((profile: HardwareProfile | null) => {
+    try {
+      if (profile) localStorage.setItem('sentra_hardware_profile', JSON.stringify(profile));
+      else localStorage.removeItem('sentra_hardware_profile');
+    } catch { /* localStorage unavailable */ }
+    setState((s) => ({ ...s, hardwareProfile: profile }));
+  }, []);
+
+  const setOptimalConfig = useCallback((config: OptimalConfig | null) => {
+    try {
+      if (config) localStorage.setItem('sentra_optimal_config', JSON.stringify(config));
+      else localStorage.removeItem('sentra_optimal_config');
+    } catch { /* localStorage unavailable */ }
+    setState((s) => ({ ...s, optimalConfig: config }));
+  }, []);
+
   const restoreSystemSnapshot = useCallback((snapshot: SystemSnapshot) => {
     if (!snapshot.state || typeof snapshot.state !== 'object') return;
     setState((s) => ({ ...s, ...(snapshot.state as Partial<AppState>) }));
@@ -598,6 +628,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toggleCamera, setSensorsConnected,
     setInflectionNodes, setDecisionHistory, setUserInclination, restoreSystemSnapshot,
     setEnergySource, setEnergyBudget, setHarvestedEnergy,
+    setHardwareProfile, setOptimalConfig,
     priorityLevel, setPriorityLevel,
     sentinelAlertActive, setSentinelAlertActive,
     spatialAudioEnabled, setSpatialAudioEnabled,

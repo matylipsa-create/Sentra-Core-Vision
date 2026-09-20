@@ -1,3 +1,5 @@
+import type { HardwareProfile } from './HardwareProfiler';
+
 const CRITICAL_SENSORS = ['PIR', 'camera', 'microphone'];
 const STANDARD_SENSORS = [...CRITICAL_SENSORS, 'IMU', 'GPS', 'temp'];
 const OPTIONAL_SENSORS = [...STANDARD_SENSORS, 'OCR', 'VLM', 'audio3D'];
@@ -30,6 +32,19 @@ export class SensorPriorityManager {
 
   getOptionalSensors(): string[] {
     return [...OPTIONAL_SENSORS];
+  }
+
+  getSensorsForProfile(profile: HardwareProfile): string[] {
+    if (profile.platform === 'desktop') return [...OPTIONAL_SENSORS];
+    if (profile.platform === 'totem') return ['camera', 'pir', 'temperature', 'humidity', 'lora'];
+    if (profile.platform === 'mobile') {
+      if (profile.computeCapacity === 'low') return ['camera', 'imu'];
+      if (profile.computeCapacity === 'medium') return ['camera', 'imu', 'gps'];
+      return ['camera', 'imu', 'gps', 'microphone'];
+    }
+    return profile.computeCapacity === 'low'
+      ? ['camera', 'imu']
+      : ['camera', 'imu', 'gps', 'microphone'];
   }
 }
 

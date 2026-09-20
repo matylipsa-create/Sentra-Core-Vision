@@ -16,11 +16,11 @@ export function usePowerMode(): {
 
   useEffect(() => {
     powerManager.initBatteryMonitor().then(() => {
-      setBatteryLevel(powerManager.getBatteryLevel());
+      setBatteryLevel(powerManager.getBatteryLevelSync());
       setIsCharging(powerManager.isChargingStatus());
     });
     const interval = window.setInterval(() => {
-      setBatteryLevel(powerManager.getBatteryLevel());
+      setBatteryLevel(powerManager.getBatteryLevelSync());
       setIsCharging(powerManager.isChargingStatus());
     }, 30000);
     return () => clearInterval(interval);

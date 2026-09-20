@@ -1,4 +1,5 @@
 import { evolis } from './EVOLIS';
+import { hardwareProfiler } from './HardwareProfiler';
 
 export type PowerMode = 'ultra_ahorro' | 'normal' | 'alto_rendimiento';
 export type EnergySource = 'grid' | 'battery' | 'harvesting' | 'hybrid';
@@ -66,7 +67,7 @@ const PROFILES: Record<PowerMode, PowerProfile> = {
 export class PowerManager {
   private currentMode: PowerMode = 'normal';
   private batteryLevel: number | null = null;
-  private isCharging: boolean = false;
+  private chargingState: boolean = false;
   private _energySource: EnergySource = 'battery';
   private _harvestedEnergy: number = 0;
   private _energyBudget: number = 100;
@@ -95,13 +96,13 @@ export class PowerManager {
       }).getBattery?.();
       if (!battery) return;
       this.batteryLevel = battery.level;
-      this.isCharging = battery.charging;
+      this.chargingState = battery.charging;
       battery.addEventListener('levelchange', () => {
         this.batteryLevel = battery.level;
         this.autoAdjust();
       });
       battery.addEventListener('chargingchange', () => {
-        this.isCharging = battery.charging;
+        this.chargingState = battery.charging;
         this.autoAdjust();
       });
     } catch {
@@ -109,16 +110,34 @@ export class PowerManager {
     }
   }
 
-  getBatteryLevel(): number | null {
+  getBatteryLevelSync(): number | null {
     return this.batteryLevel;
   }
 
+  async getBatteryLevel(): Promise<number> {
+    if (this.batteryLevel !== null) return this.batteryLevel;
+    await this.initBatteryMonitor();
+    return this.batteryLevel ?? 0;
+  }
+
   isChargingStatus(): boolean {
-    return this.isCharging;
+    return this.chargingState;
+  }
+
+  async isCharging(): Promise<boolean> {
+    await this.initBatteryMonitor();
+    return this.chargingState;
+  }
+
+  detectEnergySource(): EnergySource {
+    const platform = hardwareProfiler.detectPlatform();
+    if (platform === 'totem') return this.getHarvestedEnergy() > 0 ? 'hybrid' : 'harvesting';
+    if (platform === 'mobile' || platform === 'tablet') return 'battery';
+    return 'grid';
   }
 
   private autoAdjust(): void {
-    if (this.isCharging) {
+    if (this.chargingState) {
       if (this.currentMode === 'ultra_ahorro') this.setMode('normal');
       return;
     }
