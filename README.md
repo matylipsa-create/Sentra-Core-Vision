@@ -1,353 +1,202 @@
-# Sentra Core v4.0.0_BIO
+<div align="center">
 
-**Motor de IA Soberano, Offline-First, con Veto Humano y Trazabilidad Inalterable**
+# 🧠 Sentra Core
 
-> Cuando todo lo demás se apaga, Sentra Core sigue ahí.
+**Motor de IA Soberano · Offline-First · Veto Humano Determinista · Trazabilidad Inalterable**
 
----
+[![Build PWA](https://github.com/matylipsa-create/Sentra-Core-Vision/actions/workflows/build-pwa.yml/badge.svg)](https://github.com/matylipsa-create/Sentra-Core-Vision/actions/workflows/build-pwa.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18-61dafb)](https://reactjs.org/)
+[![PWA](https://img.shields.io/badge/PWA-Ready-5A0FC8)](https://web.dev/progressive-web-apps/)
 
-## Features Implementadas (2026-09-14)
+> _"Cuando todo lo demás se apaga, Sentra Core sigue ahí."_
 
-### Sentra Core Vision (App para personas ciegas)
-
-- ✅ UI minimalista: 1 botón 'ACTIVAR VISIÓN'
-- ✅ Cámara + COCO-SSD: detección local offline (< 200ms)
-- ✅ TTS configurable: velocidades 1x, 1.5x, 2x
-- ✅ Traducción ES: 80 clases COCO-SSD (keyboard → teclado)
-- ✅ Debounce: 3 segundos (evita repetición)
-- ✅ Feedback háptico: por distancia (VERY_CLOSE, CLOSE, FAR)
-- ✅ Audio 3D binaural: panning izquierda/derecha
-- ✅ ARIA 100%: TalkBack, VoiceOver, NVDA ready
-- ✅ Onboarding por voz: TTS al primer uso
-- ✅ OCR: Tesseract.js v7.0.0 (español, offline)
-- ✅ MoralNode: veto ético con 4 reglas
-- ✅ EVOLIS: trazabilidad hash chain SHA-256
-
-### Build
-
-- Módulos: 1360
-- Errores TypeScript: 0
-- PWA: instalable, offline-first
+</div>
 
 ---
 
-## Roadmap
-
-### Corto plazo (Q4 2026)
-
-- 🟡 Flutter Android: APK nativo con TalkBack
-- 🟡 Cola de sync IndexedDB: persistencia offline
-- 🟡 Piloto UMADESCA: 10 usuarios reales
-- 🟡 Video demo: 2-3 minutos para ATICMA
-
-### Mediano plazo (Q1 2027)
-
-- 🟡 Tótem 2.0: ESP32-S3 + LoRa mesh
-- 🟡 OCR con Google ML Kit: mejor precisión
-- 🟡 Audio 3D avanzado: HRTF real
-
-### Largo plazo (2027)
-
-- 🟡 9 modos de operación: Visión, Seguridad, Movimiento, etc.
-- 🟡 Red nacional: UMADESCA + defensa civil
-- 🟡 Marketplace: integraciones con 911, redes privadas
-
----
-
-## Visión General
-
-Sentra Core es un **motor de inteligencia artificial soberano** que funciona completamente offline, con un filtro ético inquebrantable (veto humano) y trazabilidad criptográfica inalterable (EVOLIS). Es una navaja suiza modular con 9 modos de operación, diseñada para funcionar en cualquier dispositivo — celular, PC o hardware dedicado — sin depender de la nube.
-
-### Principios Fundamentales
-
-1. **Offline-first**: Toda operación funciona sin conexión a internet
-2. **Veto humano estricto**: El veto humano siempre tiene prioridad sobre cualquier acción
-3. **Soberanía del dato**: Los datos pertenecen al usuario, almacenados localmente
-4. **Trazabilidad inalterable**: EVOLIS + firmas ECDSA P-256
-5. **Modularidad**: Navaja suiza con 9 modos de operación
-6. **Multiplataforma**: Celular + PC + hardware dedicado, UI adaptativa
-7. **Sincronización P2P**: Syncthing / Bluetooth Mesh / LoRa
-8. **Bio-Software Interface**: Inferencia activa, placebos cognitivos, neuroplasticidad, epigenética, reencuadre cognitivo y coherencia cardíaca
-9. **Accesibilidad nativa**: TalkBack, VoiceOver, NVDA, ARIA — sin soluciones parche
-
----
-
-## Ecosistema
-
-### Producto Paraguas: Sentra Core
-
-Sentra Core es el motor central del que derivan todas las verticales y productos. Reúne 14 módulos de núcleo que pueden combinarse para crear soluciones específicas.
-
-### Módulos del Motor
-
-| Módulo | Responsabilidad |
-|--------|----------------|
-| **MoralNode** | Filtro ético con 4 reglas inquebrantables (no violencia, privacidad, offline, veto humano) |
-| **EVOLIS** | Hash chain SHA-256 + firmas ECDSA P-256 para trazabilidad inalterable |
-| **BioSoftwareInterface** | Inferencia activa, placebos cognitivos, reencuadre, coherencia cardíaca, neuroplasticidad, epigenética |
-| **PerceptionEngine** | Visión (COCO-SSD), audio, IMU, STF, GPS — con anti-paraidolia y detección de camuflaje |
-| **SyncManager** | Sincronización P2P (Syncthing / Bluetooth Mesh / LoRa) |
-| **ModuleManager** | Navaja suiza — 9+ modos de operación |
-| **TCREIBridge** | Puente percepción ↔ lenguaje (prompt + response) con normalización de acentos |
-| **GeminiService** | IA generativa con fallback local + cache offline |
-| **VoiceManager** | Síntesis de voz (TTS) + escucha pasiva (STT) con normalización de acentos |
-| **StorageService** | IndexedDB + exportación / importación |
-| **SensorService** | GPS, IMU, barómetro, luz, brújula |
-| **HardwareAutoAdjust** | Auto-ajuste según hardware (incluye Bio) |
-| **BacterialGuardian** | Defensa USB + cadena EVOLIS + lógica ternaria (+1, 0, -1) |
-| **TernaryMath** | Aritmética ternaria para confianza y ética |
-
-### 9 Modos de Operación
-
-| Modo | Descripción |
-|------|-------------|
-| **Visión** | Cámara + COCO-SSD + descripción por voz — asistencia visual |
-| **Seguridad** | Sensores + alertas + EVOLIS + monitoreo |
-| **Movimiento** | GPS + IMU + orientación + vibración guía |
-| **Juego** | Narrativa adaptativa |
-| **Aprendizaje** | GeminiService + preguntas + respuestas |
-| **Impacto** | STF + ARS Evolved + energy harvesting |
-| **Silencio** | Vibración + LEDs (sin voz) |
-| **Evidencia** | EVOLIS + hash chain + exportación |
-| **Bio** | Inferencia activa, placebos cognitivos, neuroplasticidad, coherencia cardíaca |
-
----
-
-## Verticales y Productos
-
-### Sentra Visión (UMADESCA)
-
-Asistencia visual para personas ciegas o con baja visión. Detección de objetos offline con COCO-SSD, descripción por voz bilateral y navegación contextual. Validado con usuarios reales de UMADESCA (Unión Marplatense de Discapacidad Visual).
-
-### Sentinel
-
-Modo de seguridad y monitoreo con sensores + EVOLIS + Guardian Bacteriano. Defensa USB activa, verificación de cadena de evidencia y alertas en tiempo real.
-
-### EVOLIS (Independiente)
-
-Sistema de trazabilidad inalterable como producto standalone. Hash chain con SHA-256 y firmas ECDSA P-256. Aplicable a cadena de suministro, auditoría, forense y compliance.
-
-### ZION
-
-Domótica soberana. Control de hogar sin nube, con sincronización P2P y veto humano.
-
-### Can You Survive?
-
-Juego de supervivencia narrativa impulsado por el motor Sentra Core. Narrativa adaptativa que se ajusta al estado del jugador.
-
-### ARS Evolved
-
-Sistema de energy harvesting y gestión de energía. Modo impacto con STF (Skin Temperature Flux) y optimización de consumo.
-
----
-
-## Hardware: Tótem 2.0
-
-El Tótem 2.0 es el hardware de referencia para despliegues de Sentra Core en entornos sin conectividad:
-
-- **Nodo central**: Raspberry Pi 4 / PC de bajo consumo
-- **Nodos de percepción**: ESP32 con sensores (temperatura, humedad, luz, movimiento, cámara, STF)
-- **Comunicación**: LoRa (larga distancia), Bluetooth Mesh (local), Syncthing (P2P)
-- **Energía**: Batería recargable, carga Qi, panel solar (opcional)
-- **Almacenamiento**: Ranura USB/SD para exportación de evidencia y actualizaciones
-- **Ver arquitectura detallada**: `docs/HARDWARE_TOTEM_2.0.md`
-
----
-
-## Licenciamiento y Modelo de Negocio
-
-| Modelo | Descripción |
-|--------|-------------|
-| **Open Core** | Núcleo open source, módulos premium propietarios |
-| **SaaS** | Suscripción mensual para características avanzadas (Gemini remoto, sync P2P) |
-| **B2B** | Licencias empresariales para integración (seguridad, auditoría, forense) |
-| **B2G** | Contratos gubernamentales (accesibilidad, soberanía tecnológica, defensa) |
-| **Hardware** | Venta del Tótem 2.0 y nodos ESP32 |
-
----
-
-## Detección Offline
-
-La detección de objetos (COCO-SSD) se ejecuta **siempre localmente**, sin depender de la conexión a internet. El modo offline solo afecta a la IA generativa (Gemini), no a la percepción.
-
-- Cuando hay internet + Gemini ON: respuestas en lenguaje natural generadas por la IA
-- Cuando no hay internet o Gemini OFF: respuestas contextuales basadas en los objetos detectados
-- Cache de respuestas offline en memoria para respuesta instantánea (< 200ms)
-- **Anti-paraidolia**: umbral de confianza (0.7) y filtrado de falsas detecciones
-- **Detección de camuflaje**: análisis de solapamiento de bounding boxes y cobertura de escena
-- **Ajuste bio-contextual**: la sensibilidad visual se ajusta según el estado del usuario (estrés, enfoque, coherencia)
-
-## Voz Bilateral
-
-Sentra Core soporta comunicación de voz en dos direcciones:
-
-- **Síntesis de voz (TTS)**: El agente habla usando SpeechSynthesis con selector de voces del sistema
-- **Escucha pasiva (STT)**: Cuando se activa "Escucha ON", el agente escucha continuamente usando SpeechRecognition y procesa comandos de voz automáticamente
-- **Comando manual**: Botón de voz para comandos puntuales sin escucha pasiva
-- **Normalización de acentos**: Los transcripciones de voz se normalizan con tildes correctas (como → cómo, que → qué)
-
-El filtro ético (MoralNode) se aplica a **todos** los comandos, tanto de voz como de texto.
-
-## Filtro Ético (MoralNode)
-
-4 reglas inquebrantables:
-
-1. **NO_VIOLENCE**: Bloquea comandos con lenguaje violento
-2. **PRIVACY_FIRST**: Bloquea solicitudes de datos sensibles
-3. **OFFLINE_ONLY**: Verifica operación offline (activa con externalRequest: true)
-4. **HUMAN_VETO**: El veto humano bloquea todas las acciones
-
-## Trazabilidad (EVOLIS)
-
-- Hash chain con SHA-256
-- Firmas digitales ECDSA P-256
-- Roadmap: Dilithium post-cuántico en Q1 2027
-- Verificación de integridad de la cadena completa
-- Exportación de respaldo completo
-- Almacenamiento persistente en IndexedDB
-- Guardian Bacteriano: monitoreo continuo de integridad con lógica ternaria
-
-## BioSoftware (BioSoftwareInterface)
-
-Capa funcional que optimiza el "hardware biológico" del usuario:
-
-- **Coherencia cardíaca**: Respiración guiada 5.5 bpm con guía visual (inhala/exhala)
-- **Placebo cognitivo**: Refuerzo de expectativas positivas
-- **Reencuadre cognitivo**: Cambio de perspectiva ante estrés o ansiedad
-- **Inferencia activa**: Predicción y minimización de error
-- **Neuroplasticidad**: Ejercicios de formación de conexiones neuronales
-- **Epigenética**: Modulación de expresión génica mediante hábitos
-
-Cada protocolo genera sesiones con métricas (coherencia, estrés, enfoque, ciclos respiratorios) y reencuadres contextuales. Las sesiones se registran en EVOLIS.
-
-## Guardian Bacteriano
-
-Defensa activa con lógica ternaria (+1, 0, -1):
-
-- Monitoreo de puertos USB (WebUSB)
-- Verificación continua de la cadena EVOLIS
-- Estados: Dormido → Activo → Alerta → Cuarentena
-- Sistema de confianza ternaria ponderada
-
-## PWA
-
-- Instalable en celular y desktop
-- Service Worker con cache offline-first
-- Manifest con iconos y colores de tema
-- Funciona sin conexión a internet
-
-## Accesibilidad
-
-- **TalkBack** (Android): Soporte nativo via Flutter Semantics / ARIA
-- **VoiceOver** (iOS): Soporte nativo via Flutter Semantics / ARIA
-- **NVDA / JAWS** (Windows): Soporte via Flutter Desktop / ARIA
-- **Contraste**: WCAG 2.1 AA (ratio >= 4.5:1)
-- **Focus visible**: Outline neón de 3px en todos los elementos focalizables
-- **Tamaños táctiles**: Mínimo 56px de altura en botones (64px en touch)
-- **Feedback háptico**: navigator.vibrate en cada cambio de estado
-
-## Arquitectura
-
-```
-src/
-  lib/crypto.ts              SHA-256, UUID, hash chain, firmas ECDSA P-256
-  core/
-    MoralNode.ts             Filtro ético (4 reglas inquebrantables)
-    EVOLIS.ts                Hash chain + trazabilidad inalterable
-    TCREIBridge.ts           Puente percepción ↔ lenguaje (con acentos)
-    GeminiService.ts         IA con fallback local + cache offline
-    PerceptionEngine.ts      Visión, audio, IMU, STF, GPS + anti-paraidolia
-    DeviceManager.ts         Detección de capacidades
-    PowerManager.ts          Ultra ahorro / normal / alto rendimiento
-    SyncManager.ts           Sincronización P2P (LoRa / BT Mesh / Syncthing)
-    BioSoftwareInterface.ts  Inferencia activa, placebos, reencuadre, coherencia
-    HardwareAutoAdjust.ts    Auto-ajuste según hardware (incluye Bio)
-    BacterialGuardian.ts     Defensa USB + cadena EVOLIS + lógica ternaria
-    TernaryMath.ts           Aritmética ternaria (+1, 0, -1)
-  services/
-    VoiceManager.ts          Síntesis + escucha pasiva + normalización de acentos
-    StorageService.ts        IndexedDB + exportación/importación
-    SensorService.ts         GPS, IMU, barómetro, luz, brújula
-    USBService.ts            WebUSB, autenticación y bloqueo de dispositivos
-  hooks/
-    useRealModeSensors       COCO-SSD + MoralNode + EVOLIS + bio-contexto
-    useDeviceCapabilities    Detección de dispositivo
-    usePowerMode             Gestión de energía
-    useBacterialGuardian     Estado del guardian
-    useHardwareAutoAdjust   Auto-ajuste de hardware
-    useSensorService         Sensores en tiempo real
-  context/
-    AppContext.tsx           Estado global + persistencia de settings
-    ToastContext.tsx         Notificaciones
-  components/
-    AccessibleMinimalUI     Voz bilateral, vibración, ARIA, banner de respuesta
-    AdaptiveUI               Táctil vs mouse/teclado
-    CameraStream             Cámara en vivo + detecciones
-    VoiceOrbButton           Orbe de voz bidireccional (ChatGPT/Gemini Live style)
-    TactileModuleDrawer      Cajón táctil de módulos (bottom sheet)
-    GuardianView              Vista del guardian bacteriano
-    DemoModeBanner           Métricas del sistema
-  modules/
-    ModuleManager            Navaja suisa - activar/desactivar módulos
-  App.tsx                   Componente principal
-  main.tsx                   Punto de entrada
-  registerServiceWorker      PWA offline
-public/
-  manifest.json              Configuración PWA
-  sw.js                      Service Worker offline-first
-  icon.svg                   Icono de la app
-server/
-  index.ts                   WebSocket + REST API server
-  tcrei-protocol.ts         Protocolo TCREI (mensajes JSON estructurados)
-frontend/                    Flutter (Dart) — iOS, Android, Web, Desktop
-scripts/
-  generate-state.js          Generador de estado EVOLIS + MoralNode
-docs/
-  PITCH_TUTELLUS.md           Pitch deck para Tutellus Investors Day
-  PITCH_ATICMA.md             Pitch deck para ATICMA Emprende 2026
-  EXECUTIVE_SUMMARY.md        Resumen ejecutivo (1 página)
-  DEMO_VIDEO_SCRIPT.md        Guion de video demo (2-3 minutos)
-  HARDWARE_TOTEM_2.0.md       Arquitectura de hardware Tótem 2.0
+## 🎯 ¿Qué es Sentra Core?
+
+Sentra Core es un **motor de IA soberano** que funciona **completamente offline**, con **veto humano determinista** y **trazabilidad inalterable**. No es una app. Es una **plataforma**.
+
+**1 motor. 1 botón. N mercados.**
+
+- 🦯 **Accesibilidad:** Sentra Vision, asistencia visual para personas ciegas
+- 🛡️ **Ciberseguridad:** Sentinel, defensa autónoma y verificable
+- 🎮 **Gaming:** ZION, narrativa adaptativa
+- 🏠 **Domótica:** ZION Home, control soberano sin nube
+- 🧘 **Bienestar:** BioSoftware, protocolos de coherencia y foco
+- 📡 **Hardware:** Tótem 2.0, nodos ESP32 y comunicación LoRa
+
+La UI puede cambiar. El motor permanece: percibe, evalúa, decide, registra y se adapta bajo reglas explícitas.
+
+## 🏗️ Arquitectura: 4 capas
+
+```mermaid
+flowchart TB
+  A["Capa 1 · Núcleo Determinista<br/>MoralNode · EVOLIS · decisiones"] --> B["Capa 2 · Puente Sensorial<br/>cámara · voz · IMU · GPS · sensores"]
+  B --> C["Capa 3 · Motor Narrativo<br/>TCREI · contexto · aprendizaje · modos"]
+  C --> D["Capa 4 · Orquestación Estética<br/>voz · háptica · audio espacial · UI adaptativa"]
+  D -. "superficie reemplazable" .-> E["PWA · Flutter · Tótem · futuras integraciones"]
+  A --> F[("EVOLIS<br/>cadena verificable")]
+  F --> A
 ```
 
-## Estado del Proyecto (2026-09-14)
+| Capa | Responsabilidad | Estado |
+| --- | --- | --- |
+| **1. Núcleo Determinista** | Veto humano, reglas éticas, decisiones y evidencia criptográfica | ✅ Operativa |
+| **2. Puente Sensorial** | Percepción local, normalización y conexión con dispositivos | ✅ Operativa |
+| **3. Motor Narrativo** | Contexto, inclinaciones, TCREI, aprendizaje y modos | ✅ Operativa |
+| **4. Orquestación Estética** | Audio dinámico, voz, háptica y adaptación de interfaz | 🟡 Parcial · audio dinámico Q1 2027 |
 
-- Build: ✅ Pasa (0 errores TypeScript)
-- Archivos en src/core/: 31
-- Archivos en src/components/: 21
-- Archivos en src/services/: 10
-- Archivos en src/modules/: 6
-- Código muerto: 0
-- Flutter frontend: completo
-- Server backend: funcional
+> **Regla de diseño:** la experiencia visual no decide por el motor. Solo expresa su estado y sus decisiones autorizadas.
 
-## Verificación
+## ⚙️ 28 features implementadas
+
+### Núcleo soberano
+
+- ✅ MoralNode con veto humano y reglas de privacidad, violencia y operación offline
+- ✅ EVOLIS con hash chain SHA-256, firmas ECDSA P-256 y verificación de integridad
+- ✅ Historial de decisiones e inclinación con confianza escalada por volumen de muestra
+- ✅ Nodos de inflexión y reversión de estados
+- ✅ Persistencia local, exportación e importación de evidencia
+- ✅ Gestión de dispositivos y ajuste automático de capacidades
+- ✅ Guardian USB y monitoreo de integridad
+- ✅ Sincronización preparada para redes P2P y LoRa
+- ✅ Lógica ternaria para confianza y estados de seguridad
+
+### Percepción y accesibilidad
+
+- ✅ Cámara y detección local con COCO-SSD
+- ✅ OCR offline con Tesseract.js
+- ✅ Descripción contextual en español y traducción de clases
+- ✅ Debounce de detecciones para evitar repetición
+- ✅ Feedback háptico por distancia
+- ✅ Audio espacial binaural
+- ✅ TTS configurable a 1x, 1.5x y 2x
+- ✅ Onboarding por voz
+- ✅ ARIA y navegación compatible con TalkBack, VoiceOver y NVDA
+
+### Motor adaptativo
+
+- ✅ Modos smooth, analytical y silent
+- ✅ Perfil de inclinación del usuario
+- ✅ Sugerencias accionables registradas en EVOLIS
+- ✅ Percepción de habilidades y patrones de uso
+- ✅ Gestión de carga cognitiva
+- ✅ Descomposición de tareas
+- ✅ Registro de campo
+- ✅ Orquestación de eventos y failover
+- ✅ Paneles de visión, sensores, modelos, LoRa y guardian
+- ✅ Service Worker y experiencia PWA offline-first
+
+## 🔁 Cómo fluye una decisión
+
+```mermaid
+sequenceDiagram
+  participant S as Sensor
+  participant P as Puente sensorial
+  participant N as Núcleo determinista
+  participant R as Motor narrativo
+  participant O as Orquestación
+  participant E as EVOLIS
+
+  S->>P: señal local
+  P->>N: percepción normalizada
+  N->>N: aplica veto y reglas
+  alt acción autorizada
+    N->>R: contexto permitido
+    R->>O: respuesta adaptable
+    O-->>S: voz, háptica o UI
+    N->>E: evidencia firmada
+  else acción bloqueada
+    N->>E: veto registrado
+    N-->>O: estado bloqueado
+  end
+```
+
+## 📦 Superficies de despliegue
+
+| Superficie | Uso | Tecnología |
+| --- | --- | --- |
+| **Sentra Vision** | Asistencia visual y accesibilidad | React + TypeScript + PWA |
+| **Flutter** | Cliente móvil nativo y expansión multiplataforma | Dart + Flutter |
+| **Servidor** | API, WebSocket y protocolo TCREI | Node.js + TypeScript |
+| **Tótem 2.0** | Sensores distribuidos y operación de campo | ESP32 + LoRa + C++ |
+
+## 🚀 Inicio rápido
 
 ```bash
-npm run typecheck   # Verificación de tipos
-npm run build       # Build de producción
-npm run preview     # Preview PWA
+npm install
+npm run dev
 ```
 
-## Versiones
+Para verificar el motor:
 
-| Componente | Versión | Lenguaje |
-|------------|---------|----------|
-| Sentra Core Motor | 4.0.0_BIO | TypeScript |
-| Sentra Core API Server | 1.0.0 | TypeScript (Node.js) |
-| Sentra Core Frontend | 1.0.0 | Dart (Flutter) |
-| Protocolo TCREI | 4.0 | JSON |
+```bash
+npm run typecheck
+npm run build
+```
 
-## Validación
+La PWA puede instalarse en desktop o móvil y mantiene la percepción principal en el dispositivo. La conectividad amplía el sistema; no es un requisito para su núcleo.
 
-- **UMADESCA**: Unión Marplatense de Discapacidad Visual — usuarios reales probando Sentra Visión
-- **Naty**: Usuario piloto de asistencia visual
-- Código funcional con build de producción verificado
+## 📊 Estado del activo
+
+- **28 features** implementadas
+- **1363+ módulos** procesados por el build
+- **0 errores TypeScript** en el build de referencia
+- **4 capas** de arquitectura
+- **Offline-first** como requisito de diseño
+- **Capa 4 parcial:** audio dinámico planificado para Q1 2027
+
+## 🧭 Roadmap
+
+### Q4 2026
+
+- Piloto de Sentra Vision con usuarios reales de UMADESCA
+- APK Flutter nativo con TalkBack
+- Cola de sincronización IndexedDB
+- Demo institucional para ATICMA y Endeavor
+
+### Q1 2027
+
+- Tótem 2.0 con ESP32-S3 y red LoRa mesh
+- Audio espacial avanzado con HRTF
+- OCR con ML Kit
+- Evolución de la capa de Orquestación Estética
+
+### 2027+
+
+- Nuevas verticales sobre el mismo motor
+- Integraciones con redes privadas, emergencias y despliegues de campo
+- Evolución de la evidencia hacia criptografía post-cuántica
+
+## 📚 Documentación
+
+- [Arquitectura completa](ARCHITECTURE.md)
+- [Mapa visual del sistema](docs/visual/README.md)
+- [Sentra Vision](docs/README_VISION.md)
+- [Decisiones de auditoría](docs/AUDIT_DECISIONS.md)
+- [Arquitectura multimodal](docs/MULTIMODAL_INTERFACE_ARCHITECTURE.md)
+- [Tótem 2.0](docs/HARDWARE_TOTEM_2.0.md)
+- [Guion de demo](docs/DEMO_SCRIPT.md)
+- [Pitch UMADESCA](docs/PITCH_UMADESCA.md)
+
+## 🤝 Ecosistema y modelo
+
+Sentra Core se plantea como un **Open Core**: el motor y sus principios deben poder auditarse, mientras que las verticales, integraciones y hardware habilitan modelos B2B, B2G y de impacto social.
+
+El objetivo no es agregar complejidad visible. Es ofrecer un núcleo confiable que distintas organizaciones puedan adaptar sin perder soberanía del dato, control humano ni trazabilidad.
+
+## 📄 Licencia
+
+Distribuido bajo licencia MIT. Ver [LICENSE](LICENSE) si está presente en la distribución.
 
 ---
 
-## Contacto
+<div align="center">
 
-Sentra Core — Soberanía tecnológica desde Mar del Plata, Argentina.
+**Sentra Core: soberanía tecnológica aplicada a decisiones reales.**
 
-> Cuando todo lo demás se apaga, Sentra Core sigue ahí.
+</div>
