@@ -200,3 +200,20 @@ Distribuido bajo licencia MIT. Ver [LICENSE](LICENSE) si está presente en la di
 **Sentra Core: soberanía tecnológica aplicada a decisiones reales.**
 
 </div>
+
+## 🎌 Espíritu Japonés
+
+Sentra Core está diseñado con el espíritu de Japón. No es solo software. Es una obra de ingeniería.
+
+- **Kodawari (こだわり)** — Obsesión por el detalle
+- **Ikigai (生き甲斐)** — Razón de ser
+- **Ganbaru (頑張る)** — Dar todo
+- **Kintsugi (金継ぎ)** — Reparar con oro
+- **Mono no aware (物の哀れ)** — Belleza en lo efímero
+- **Shokunin (職人)** — Orgullo por el oficio
+- **Kaizen (改善)** — Mejora continua
+- **Mushin (無心)** — Mente sin ego
+
+_"Dar lo mejor sin esperar algo a cambio."_
+
+Ver [docs/SPIRIT.md](docs/SPIRIT.md) para más detalles.
