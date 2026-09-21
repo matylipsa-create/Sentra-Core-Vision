@@ -232,4 +232,4 @@ Ambas verticales reutilizan el motor completo via la API server.
 
 ### Roadmap criptografico
 
-Dilithium post-cuantico en Q1 2027.
+ECDSA P-256 en Q1 2027.
