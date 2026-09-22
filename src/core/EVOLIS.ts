@@ -103,6 +103,11 @@ export class EVOLIS {
         action,
       };
       this.entries.push(evidence);
+      try {
+        await storageService.saveEvidence(evidence);
+      } catch (e) {
+        console.error('Error saving evidence to storage:', e);
+      }
     });
     this.writeQueue = operation.then(() => undefined, () => undefined);
     await operation;

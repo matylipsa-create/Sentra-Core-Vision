@@ -82,7 +82,7 @@ export class MoralNode {
         : 'No solicita datos sensibles',
     });
 
-    const isOnline = navigator.onLine;
+    const isOnline = typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true;
     const externalRequest = input?.externalRequest ?? false;
     const offlineViolation = externalRequest && !isOnline;
     decisions.push({

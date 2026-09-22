@@ -64,7 +64,7 @@ export async function generateECDSAKeyPair(): Promise<{
 }> {
   const keyPair = await crypto.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
-    true,
+    false,
     ['sign', 'verify']
   );
   const pubBuf = await crypto.subtle.exportKey('spki', keyPair.publicKey);

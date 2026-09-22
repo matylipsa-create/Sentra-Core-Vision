@@ -81,7 +81,7 @@ export class SyncManager {
   }
 
   private async signPacket(packet: SyncPacket): Promise<string> {
-    const data = `${packet.id}:${packet.sourceId}:${packet.timestamp}:${packet.module}`;
+    const data = `${packet.id}:${packet.sourceId}:${packet.timestamp}:${packet.module}:${JSON.stringify(packet.payload || {})}`;
     return sha256(data);
   }
 
