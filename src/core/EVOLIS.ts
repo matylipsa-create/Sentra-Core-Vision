@@ -2,6 +2,7 @@ import {
   HashChainEntry,
   createHashChainEntry,
   verifyHashChain,
+  sha256,
   ECDSASignature,
   ecdsaSign,
   ecdsaVerify,
@@ -64,6 +65,8 @@ export class EVOLIS {
   private privateKey: string = '';
   private integrityListeners: Set<ChainIntegrityListener> = new Set();
   private writeQueue: Promise<void> = Promise.resolve();
+  private lastVerifiedIndex = -1;
+  private lastVerifiedState = true;
 
   async initialize(): Promise<void> {
     if (this.publicKey) return;
@@ -135,6 +138,43 @@ export class EVOLIS {
 
   async verifyChainIntegrity(): Promise<boolean> {
     return this.verify();
+  }
+
+  async verifyIncremental(): Promise<boolean> {
+    if (!this.lastVerifiedState) return false;
+    if (this.entries.length === 0) return true;
+    if (this.lastVerifiedIndex >= this.entries.length - 1) return true;
+
+    const startIndex = Math.max(0, this.lastVerifiedIndex);
+    for (let index = startIndex; index < this.entries.length; index++) {
+      const current = this.entries[index].entry;
+      const expectedPreviousHash = index === 0
+        ? GENESIS_HASH
+        : this.entries[index - 1].entry.hash;
+      if (current.previousHash !== expectedPreviousHash) {
+        this.lastVerifiedState = false;
+        this.notifyIntegrityListeners(false);
+        return false;
+      }
+
+      const composite = `${current.index}:${current.previousHash}:${current.timestamp}:${current.data}`;
+      if (await sha256(composite) !== current.hash) {
+        this.lastVerifiedState = false;
+        this.notifyIntegrityListeners(false);
+        return false;
+      }
+
+      const evidence = this.entries[index];
+      const message = `${current.index}:${current.hash}:${current.previousHash}`;
+      if (!await ecdsaVerify(message, evidence.signature, evidence.signature.publicKey)) {
+        this.lastVerifiedState = false;
+        this.notifyIntegrityListeners(false);
+        return false;
+      }
+    }
+
+    this.lastVerifiedIndex = this.entries.length - 1;
+    return true;
   }
 
   onChainBreach(): void {
@@ -256,12 +296,16 @@ export class EVOLIS {
 
   importState(entries: EVOLISEvidence[]): void {
     this.entries = JSON.parse(JSON.stringify(entries));
+    this.lastVerifiedIndex = -1;
+    this.lastVerifiedState = true;
   }
 
   clear(): void {
     this.entries = [];
     this.publicKey = '';
     this.privateKey = '';
+    this.lastVerifiedIndex = -1;
+    this.lastVerifiedState = true;
   }
 
   async registerIdentityEvent(eventType: string, data: string): Promise<EVOLISEvidence> {
