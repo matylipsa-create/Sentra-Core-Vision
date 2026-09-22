@@ -56,6 +56,38 @@ export interface ECDSASignature {
   timestamp: number;
 }
 
+export interface SecureCryptoKeyPair {
+  publicKeyString: string;
+  privateKey: CryptoKey;
+}
+
+/**
+ * Genera un par ECDSA P-256 con la clave privada protegida contra exportación.
+ */
+export async function generateSecureECDSAKeyPair(): Promise<SecureCryptoKeyPair> {
+  const keyPair = await crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign', 'verify']
+  );
+
+  const pubBuf = await crypto.subtle.exportKey('spki', keyPair.publicKey);
+
+  return {
+    publicKeyString: arrayBufferToBase64(pubBuf),
+    privateKey: keyPair.privateKey,
+  };
+}
+
+export async function secureEcdsaSign(message: string, privateKey: CryptoKey): Promise<string> {
+  const sigBuf = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    new TextEncoder().encode(message)
+  );
+  return arrayBufferToBase64(sigBuf);
+}
+
 const ECDSA_KEY_PREFIX = 'sentra_ecdsa_';
 
 export async function generateECDSAKeyPair(): Promise<{
