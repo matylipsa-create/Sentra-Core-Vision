@@ -59,24 +59,32 @@ export interface ECDSASignature {
 export interface SecureCryptoKeyPair {
   publicKeyString: string;
   privateKey: CryptoKey;
+  rawPrivateKey?: JsonWebKey;
 }
 
 /**
- * Genera un par ECDSA P-256 con la clave privada protegida contra exportación.
+ * Genera un par ECDSA P-256 exportable para persistencia controlada.
  */
 export async function generateSecureECDSAKeyPair(): Promise<SecureCryptoKeyPair> {
   const keyPair = await crypto.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
+    true,
     ['sign', 'verify']
   );
 
   const pubBuf = await crypto.subtle.exportKey('spki', keyPair.publicKey);
+  const rawPrivateKey = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
 
   return {
     publicKeyString: arrayBufferToBase64(pubBuf),
     privateKey: keyPair.privateKey,
+    rawPrivateKey,
   };
+}
+
+export async function exportPublicKeyToString(publicKey: CryptoKey): Promise<string> {
+  const exported = await crypto.subtle.exportKey('spki', publicKey);
+  return arrayBufferToBase64(exported);
 }
 
 export async function secureEcdsaSign(message: string, privateKey: CryptoKey): Promise<string> {
@@ -96,7 +104,7 @@ export async function generateECDSAKeyPair(): Promise<{
 }> {
   const keyPair = await crypto.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
+    true,
     ['sign', 'verify']
   );
   const pubBuf = await crypto.subtle.exportKey('spki', keyPair.publicKey);
@@ -107,14 +115,20 @@ export async function generateECDSAKeyPair(): Promise<{
   };
 }
 
+export function ecdsaSign(message: string, privateKey: CryptoKey): Promise<string>;
+export function ecdsaSign(message: string, privateKey: string): Promise<ECDSASignature>;
 export async function ecdsaSign(
   message: string,
-  privateKeyRaw: string
-): Promise<ECDSASignature> {
-  const privateKey = privateKeyRaw.replace(ECDSA_KEY_PREFIX, '');
+  privateKey: CryptoKey | string
+): Promise<string | ECDSASignature> {
+  if (typeof privateKey !== 'string') {
+    return secureEcdsaSign(message, privateKey);
+  }
+
+  const privateKeyRaw = privateKey.replace(ECDSA_KEY_PREFIX, '');
   const key = await crypto.subtle.importKey(
     'pkcs8',
-    base64ToArrayBuffer(privateKey),
+    base64ToArrayBuffer(privateKeyRaw),
     { name: 'ECDSA', namedCurve: 'P-256' },
     false,
     ['sign']
@@ -131,23 +145,28 @@ export async function ecdsaSign(
   };
 }
 
+export function ecdsaVerify(message: string, signatureBase64: string, publicKey: CryptoKey | string): Promise<boolean>;
+export function ecdsaVerify(message: string, signature: ECDSASignature, publicKey: string): Promise<boolean>;
 export async function ecdsaVerify(
   message: string,
-  signature: ECDSASignature,
-  publicKeyRaw: string
+  signature: string | ECDSASignature,
+  publicKey: CryptoKey | string
 ): Promise<boolean> {
   try {
-    const key = await crypto.subtle.importKey(
-      'spki',
-      base64ToArrayBuffer(publicKeyRaw),
-      { name: 'ECDSA', namedCurve: 'P-256' },
-      false,
-      ['verify']
-    );
+    const key = typeof publicKey === 'string'
+      ? await crypto.subtle.importKey(
+        'spki',
+        base64ToArrayBuffer(publicKey),
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        true,
+        ['verify']
+      )
+      : publicKey;
+    const signatureBase64 = typeof signature === 'string' ? signature : signature.signature;
     return crypto.subtle.verify(
       { name: 'ECDSA', hash: 'SHA-256' },
       key,
-      base64ToArrayBuffer(signature.signature),
+      base64ToArrayBuffer(signatureBase64),
       new TextEncoder().encode(message)
     );
   } catch {
