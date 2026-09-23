@@ -69,6 +69,20 @@ aplicación requiere revisión y veto humano determinista fuera de este proceso.
 
 ---
 
+## 🧹 Limpieza segura de módulos legacy
+
+La auditoría de migración se ejecuta con:
+
+```bash
+npm run cleanup:legacy
+```
+
+El proceso solo mueve `TCREIBridge.ts` cuando no existen referencias activas y
+nunca sobrescribe un destino existente. Si encuentra consumidores, informa los
+archivos bloqueantes y no modifica el repositorio.
+
+---
+
 ## Licencia
 
 MIT © 2026 Matías Ariel Lipari
