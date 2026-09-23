@@ -17,41 +17,47 @@ export interface ObjectPoolOptions<T> {
 }
 
 export class ObjectPool<T> {
-  private readonly items: T[] = [];
+  private readonly pool: T[] = [];
   private readonly factory: () => T;
-  private readonly reset: ResetFunction<T>;
+  private readonly resetFn: ResetFunction<T>;
   private readonly maxSize: number;
 
-  constructor(options: ObjectPoolOptions<T>) {
-    if (!Number.isInteger(options.initialSize) || (options.initialSize ?? 0) < 0) {
+  constructor(
+    factory: () => T,
+    resetFn: ResetFunction<T>,
+    initialSize = 50,
+    maxSize = 500,
+  ) {
+    if (!Number.isInteger(initialSize) || initialSize < 0) {
       throw new RangeError('ObjectPool initialSize debe ser un entero no negativo.');
     }
-    if (!Number.isInteger(options.maxSize) || (options.maxSize ?? 0) <= 0) {
+    if (!Number.isInteger(maxSize) || maxSize <= 0) {
       throw new RangeError('ObjectPool maxSize debe ser un entero positivo.');
     }
-    if ((options.initialSize ?? 0) > (options.maxSize ?? 0)) {
+    if (initialSize > maxSize) {
       throw new RangeError('ObjectPool initialSize no puede superar maxSize.');
     }
 
-    this.factory = options.factory;
-    this.reset = options.reset;
-    this.maxSize = options.maxSize ?? 1;
-    for (let index = 0; index < (options.initialSize ?? 0); index += 1) {
-      this.items.push(this.factory());
+    this.factory = factory;
+    this.resetFn = resetFn;
+    this.maxSize = maxSize;
+    for (let index = 0; index < initialSize; index += 1) {
+      this.pool.push(this.factory());
     }
   }
 
   acquire(): T {
-    return this.items.pop() ?? this.factory();
+    return this.pool.pop() ?? this.factory();
   }
 
   release(item: T): void {
-    this.reset(item);
-    if (this.items.length < this.maxSize) this.items.push(item);
+    if (this.pool.length >= this.maxSize) return;
+    this.resetFn(item);
+    this.pool.push(item);
   }
 
   size(): number {
-    return this.items.length;
+    return this.pool.length;
   }
 }
 
@@ -67,7 +73,7 @@ export class MaxPriorityQueue<T> {
     if (!Number.isFinite(priority)) {
       throw new RangeError('La prioridad debe ser un número finito.');
     }
-    this.heap.push({ payload, priority });
+    this.heap.push(Object.freeze({ payload, priority }));
     this.siftUp(this.heap.length - 1);
   }
 
@@ -82,8 +88,8 @@ export class MaxPriorityQueue<T> {
     return top.payload;
   }
 
-  peek(): PrioritizedTask<T> | null {
-    return this.heap[0] ?? null;
+  peek(): T | null {
+    return this.heap[0]?.payload ?? null;
   }
 
   size(): number {
@@ -125,7 +131,7 @@ export interface AuditRecord {
   readonly id: string;
   readonly timestamp: number;
   readonly module: string;
-  readonly statePayload: Record<string, unknown>;
+  readonly statePayload: Readonly<Record<string, unknown>>;
   readonly previousHash: string;
   readonly signature: string;
 }
@@ -158,14 +164,14 @@ export class SecureStateRegistry {
     const timestamp = Date.now();
     const rawData = `${this.lastHash}:${timestamp}:${moduleName}:${JSON.stringify(statePayload)}`;
     const signature = await sha256(rawData);
-    const record: AuditRecord = {
+    const record: AuditRecord = Object.freeze({
       id: `audit-${timestamp}-${signature.slice(0, 12)}`,
       timestamp,
       module: moduleName,
-      statePayload,
+      statePayload: Object.freeze(statePayload),
       previousHash: this.lastHash,
       signature,
-    };
+    });
     this.lastHash = signature;
     return record;
   }
@@ -174,7 +180,7 @@ export class SecureStateRegistry {
     return this.lastHash;
   }
 
-  clear(): void {
+  clearRegistry(): void {
     this.state.clear();
     this.lastHash = GENESIS_HASH;
   }
