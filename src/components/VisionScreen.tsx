@@ -14,6 +14,7 @@ import { useApp } from '../context/AppContext';
 import { getHistory, getInclination } from '../core/DecisionHistory';
 import { listNodes, revertToNode } from '../core/InflectionNode';
 import { applySuggestion, getSuggestions, type Suggestion } from '../core/UserInclination';
+import { sentraEngine, type SystemMetrics } from '../core/SentraCoreEngine';
 
 const LABEL_ES: Record<string, string> = {
   person: 'persona',
@@ -135,11 +136,13 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [openPanel, setOpenPanel] = useState<'history' | 'reversion' | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastTapRef = useRef(0);
   const lastSpokenRef = useRef<string>('');
   const lastSpokenTimeRef = useRef<number>(0);
   const audioInitRef = useRef(false);
+  const telemetryIntervalRef = useRef<number | null>(null);
 
   const speak = useCallback((text: string) => {
     console.log('[TTS] Text:', text);
@@ -235,62 +238,36 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
 
   const handleToggle = useCallback(async () => {
     const newState = !isActive;
-    setIsActive(newState);
-    onToggle?.(newState);
     setError(null);
     lastSpokenRef.current = '';
 
-    ensureAudioInit();
-
     if (newState) {
+      setError(null);
+      ensureAudioInit();
       try {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        gain.gain.value = 0.001;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.01);
-        console.log('[AUDIO] AudioContext desbloqueado');
-      } catch (err) {
-        console.error('[AUDIO] Error al desbloquear:', err);
-      }
-
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        const silentUtterance = new SpeechSynthesisUtterance(' ');
-        silentUtterance.volume = 0.001;
-        window.speechSynthesis.speak(silentUtterance);
-        window.speechSynthesis.cancel();
-        console.log('[TTS] speechSynthesis desbloqueado');
-      }
-    }
-
-    try {
-      if (deviceManager && typeof (deviceManager as any).vibratePattern === 'function') {
-        (deviceManager as any).vibratePattern('QUADRANT_TAP');
-      }
-    } catch { /* noop */ }
-
-    if (newState) {
-      speak('Visión activada. Describiendo entorno.');
-      if (videoRef.current) {
-        console.log('[CAMERA] Activando...');
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' }, audio: false
-          });
-          console.log('[CAMERA] OK:', stream.getVideoTracks()[0]?.label);
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        } catch (err) {
-          console.error('[CAMERA] Error:', (err as { name?: string }).name, (err as { message?: string }).message);
-          setError('No se pudo acceder a la cámara');
-          speak('Error al activar cámara');
-          setIsActive(false);
+        const initialized = await sentraEngine.initializeCore(videoRef.current ?? undefined);
+        if (!initialized) {
+          setError('Algunos sensores no están disponibles; usando telemetría simulada.');
         }
+        setIsActive(true);
+        onToggle?.(true);
+        void sentraEngine.fetchLiveMetrics().then(setSystemMetrics);
+      } catch (err) {
+        console.error('[SentraCore] Error al iniciar el núcleo:', err);
+        setError('No se pudo iniciar el núcleo de hardware.');
+        return;
       }
+
+      try {
+        if (deviceManager && typeof (deviceManager as any).vibratePattern === 'function') {
+          (deviceManager as any).vibratePattern('QUADRANT_TAP');
+        }
+      } catch { /* noop */ }
+
+      speak('Visión activada. Describiendo entorno.');
     } else {
+      setIsActive(false);
+      onToggle?.(false);
       speak('Visión desactivada.');
       setDetectionCount(0);
       setDetectedLabels([]);
@@ -299,8 +276,35 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
         videoRef.current.srcObject = null;
       }
+      setSystemMetrics(null);
     }
   }, [isActive, speak, onToggle, ensureAudioInit]);
+
+  useEffect(() => {
+    if (!isActive) {
+      if (telemetryIntervalRef.current !== null) {
+        window.clearInterval(telemetryIntervalRef.current);
+        telemetryIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const refreshMetrics = () => {
+      void sentraEngine.fetchLiveMetrics()
+        .then(setSystemMetrics)
+        .catch((metricsError) => {
+          console.error('[SentraCore] Error al obtener telemetría:', metricsError);
+        });
+    };
+    refreshMetrics();
+    telemetryIntervalRef.current = window.setInterval(refreshMetrics, 1000);
+    return () => {
+      if (telemetryIntervalRef.current !== null) {
+        window.clearInterval(telemetryIntervalRef.current);
+        telemetryIntervalRef.current = null;
+      }
+    };
+  }, [isActive]);
 
   useEffect(() => {
     const handleDoubleTap = (e: TouchEvent) => {
@@ -557,6 +561,33 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
           <p className="vision-error" role="alert" aria-label={`Error: ${effectiveError}`}>⚠️ {effectiveError}</p>
         )}
       </div>
+
+      {isActive && systemMetrics && (
+        <div className="vision-status" role="status" aria-live="polite" aria-label="Telemetría híbrida del núcleo">
+          <p className="vision-camera-status">
+            Núcleo: <strong>{systemMetrics.mode.toUpperCase()}</strong> · Audio:{' '}
+            <strong>{systemMetrics.sensors.audio.speakerReady ? 'ACTIVO' : 'INACTIVO'}</strong>
+          </p>
+          <p>
+            GPS: {systemMetrics.sensors.gps.lat?.toFixed(4)}, {systemMetrics.sensors.gps.lon?.toFixed(4)}{' '}
+            ({systemMetrics.sensors.gps.source})
+          </p>
+          <p>
+            Batería: {systemMetrics.sensors.battery.level === null
+              ? 'N/D'
+              : `${Math.round(systemMetrics.sensors.battery.level * 100)}%`}{' '}
+            ({systemMetrics.sensors.battery.source})
+          </p>
+          <p>
+            Orientación: α {systemMetrics.sensors.orientation.alpha?.toFixed(1)}° · β{' '}
+            {systemMetrics.sensors.orientation.beta?.toFixed(1)}° · γ{' '}
+            {systemMetrics.sensors.orientation.gamma?.toFixed(1)}° ({systemMetrics.sensors.orientation.source})
+          </p>
+          <p>
+            Rendimiento: {systemMetrics.processingLoad.fps} FPS · {systemMetrics.processingLoad.inferenceTimeMs.toFixed(1)} ms
+          </p>
+        </div>
+      )}
 
       <p className="vision-hint" aria-hidden="true">
         Doble toque en pantalla para activar/desactivar
