@@ -38,23 +38,19 @@ export function useRealModeSensors(
     let cancelled = false;
 
     async function loadModel() {
-      console.log('[COCO-SSD] Iniciando carga...');
       try {
         const tf = await import('@tensorflow/tfjs');
         const cocoSsd = await import('@tensorflow-models/coco-ssd');
         await tf.ready();
         try {
           await tf.setBackend('webgl');
-        } catch {
-          console.log('[COCO-SSD] WebGL falló, intentando CPU...');
+        } catch (backendError: unknown) {
+          console.warn('[COCO-SSD] WebGL no disponible; usando CPU.', backendError);
           await tf.setBackend('cpu');
         }
-        console.log('[COCO-SSD] Backend:', tf.getBackend());
         const model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
         if (cancelled) return;
         modelRef.current = model as unknown as CocoSsdModel;
-        console.log('[COCO-SSD] Modelo cargado exitosamente');
-        console.log('[COCO-SSD] Modelo listo, esperando video...');
         setState((s) => ({ ...s, loading: false }));
       } catch (err) {
         console.error('[COCO-SSD] Error al cargar:', err);
@@ -88,23 +84,17 @@ export function useRealModeSensors(
       const video = videoRef.current;
       const model = modelRef.current;
       if (!video || !model) return;
-      console.log('[LOOP] Video readyState:', video.readyState);
-      console.log('[LOOP] Video dimensions:', video.videoWidth, 'x', video.videoHeight);
       if (video.readyState < 2) {
-        console.log('[LOOP] Video no listo, readyState:', video.readyState);
         return;
       }
       const now = Date.now();
       if (now - lastProcessTime < 1000) return;
       lastProcessTime = now;
       try {
-        console.log('[LOOP] Frame enviado al modelo');
         const predictions = await model.detect(video);
-        console.log('[LOOP] Predicciones raw:', predictions);
         const detections: Detection[] = predictions.map((p) => ({
           class: p.class, score: p.score, bbox: p.bbox as [number, number, number, number],
         }));
-        console.log('[LOOP] Detecciones:', detections.length);
         perceptionEngine.current.setBioContext(bioSoftware.getState());
         const perception = perceptionEngine.current.process({
           visionDetections: detections,
@@ -119,8 +109,8 @@ export function useRealModeSensors(
           ...s, detections, perception,
           lastEval: { allowed: eval_.allowed, reason: eval_.decisions.find((d) => !d.passed)?.reason ?? 'OK' },
         }));
-      } catch {
-        // Detection errors are transient
+      } catch (detectionError: unknown) {
+        console.warn('[COCO-SSD] Error transitorio durante inferencia.', detectionError);
       }
     }
     detect();

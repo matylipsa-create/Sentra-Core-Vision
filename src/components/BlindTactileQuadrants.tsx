@@ -68,11 +68,7 @@ export const BlindTactileQuadrants: React.FC<BlindTactileQuadrantsProps> = ({
       ensureAudioInit();
       pressStartRef.current.set(q, Date.now());
       try {
-        if (deviceManager && typeof (deviceManager as any).vibratePattern === 'function') {
-          (deviceManager as any).vibratePattern('QUADRANT_TAP');
-        } else if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-          navigator.vibrate(50);
-        }
+        deviceManager.vibratePattern('QUADRANT_TAP');
       } catch (_) {
         /* noop */
       }

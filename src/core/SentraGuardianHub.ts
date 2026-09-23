@@ -60,11 +60,11 @@ function fromGovernorLevel(level: GovernorLevel): PriorityLevel {
  */
 function safeEvolisRecord(module: string, type: string, detail: string): void {
   try {
-    if (evolis && typeof (evolis as any).record === 'function') {
-      void (evolis as any).record(module, type, detail);
-    }
-  } catch (_) {
-    /* noop: EVOLIS no debe romper el flujo del hub */
+    void evolis.record(module, type, detail).catch((error: unknown) => {
+      console.warn('[SentraGuardianHub] Error registrando EVOLIS:', error);
+    });
+  } catch (error: unknown) {
+    console.warn('[SentraGuardianHub] Error iniciando registro EVOLIS:', error);
   }
 }
 
@@ -144,17 +144,11 @@ class SentraGuardianHub {
 
   initSpatialAudio(): void {
     try {
-      if (spatialAudioEngine && typeof spatialAudioEngine.init === 'function') {
-        if (typeof (spatialAudioEngine as any).isInitialized === 'function') {
-          if (!(spatialAudioEngine as any).isInitialized()) {
-            spatialAudioEngine.init();
-          }
-        } else {
-          spatialAudioEngine.init();
-        }
+      if (!spatialAudioEngine.isInitialized()) {
+        spatialAudioEngine.init();
       }
-    } catch (_) {
-      /* noop: audio 3D es opcional, no debe romper el hub */
+    } catch (error: unknown) {
+      console.warn('[SentraGuardianHub] Error inicializando audio espacial:', error);
     }
   }
 
@@ -162,15 +156,9 @@ class SentraGuardianHub {
     if (this._multimodalInitialized) return;
 
     try {
-      if (bacterialGuardian && typeof (bacterialGuardian as any).setContextGovernor === 'function') {
-        (bacterialGuardian as any).setContextGovernor(contextGovernor);
-      }
-      if (eventRouter && typeof (eventRouter as any).setContextGovernor === 'function') {
-        (eventRouter as any).setContextGovernor(contextGovernor);
-      }
-      if (this.accessibility && typeof (this.accessibility as any).setVoiceManager === 'function') {
-        (this.accessibility as any).setVoiceManager(voiceManager);
-      }
+      bacterialGuardian.setContextGovernor(contextGovernor);
+      eventRouter.setContextGovernor(contextGovernor);
+      this.accessibility.setVoiceManager(voiceManager);
 
       if (typeof window !== 'undefined') {
         (window as unknown as { __sentraAccessibility?: SentraVisionAccessibility }).__sentraAccessibility =
@@ -357,9 +345,7 @@ class SentraGuardianHub {
 
   private announceCritical(message: string): void {
     try {
-      if (this.accessibility && typeof (this.accessibility as any).announcePriority === 'function') {
-        (this.accessibility as any).announcePriority(message, 'critical');
-      }
+      this.accessibility.announcePriority(message, 'critical');
     } catch (_) {
       /* noop */
     }
@@ -367,9 +353,7 @@ class SentraGuardianHub {
 
   private announceNormal(message: string): void {
     try {
-      if (this.accessibility && typeof (this.accessibility as any).announcePriority === 'function') {
-        (this.accessibility as any).announcePriority(message, 'normal');
-      }
+      this.accessibility.announcePriority(message, 'normal');
     } catch (_) {
       /* noop */
     }
@@ -392,9 +376,7 @@ class SentraGuardianHub {
       this.sentinelReleaseTimer = null;
     }
     try {
-      if (quadrantGestures && typeof (quadrantGestures as any).dispose === 'function') {
-        (quadrantGestures as any).dispose();
-      }
+      quadrantGestures.dispose();
     } catch (_) {
       /* noop */
     }

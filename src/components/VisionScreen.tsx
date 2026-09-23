@@ -148,10 +148,8 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
     console.log('[TTS] Text:', text);
     console.log('[TTS] Speaking...');
     try {
-      if (voiceManager && typeof (voiceManager as any).speak === 'function') {
-        (voiceManager as any).speak(text, 2);
-        return;
-      }
+      voiceManager.speak(text, 2);
+      return;
     } catch { /* noop */ }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       const u = new SpeechSynthesisUtterance(text);
@@ -259,9 +257,7 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
       }
 
       try {
-        if (deviceManager && typeof (deviceManager as any).vibratePattern === 'function') {
-          (deviceManager as any).vibratePattern('QUADRANT_TAP');
-        }
+        deviceManager.vibratePattern('QUADRANT_TAP');
       } catch { /* noop */ }
 
       speak('Visión activada. Describiendo entorno.');

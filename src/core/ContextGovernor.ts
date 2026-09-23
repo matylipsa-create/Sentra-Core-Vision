@@ -20,6 +20,11 @@ export interface GovernanceEvent {
   timestamp: number;
 }
 
+export interface ContextGovernorPort {
+  isCriticalActive(): boolean;
+  setPriorityLevel(level: 'CRITICAL' | 'NAVIGATION' | 'DESCRIPTIVE'): void;
+}
+
 const MAX_GOVERNANCE_LOG = 50;
 
 const SPAM_PATTERNS = [

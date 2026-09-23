@@ -12,6 +12,7 @@ import { voiceManager } from '../services/VoiceManager';
 import { deviceManager } from './DeviceManager';
 import { evolis } from './EVOLIS';
 import { offlineLogger } from './OfflineLogger';
+import type { ContextGovernorPort } from './ContextGovernor';
 
 export type RouteActionType = 'voice' | 'vibrate' | 'evolis_record' | 'alert' | 'log' | 'block';
 
@@ -158,10 +159,10 @@ class EventRouter {
     DESCRIPTIVE: 3000,
   };
   private _lastEventTime: Record<string, number> = {};
-  private _contextGovernor: any = null;
+  private contextGovernor: ContextGovernorPort | null = null;
 
-  public setContextGovernor(g: any): void {
-    this._contextGovernor = g;
+  public setContextGovernor(governor: ContextGovernorPort): void {
+    this.contextGovernor = governor;
   }
 
   public routeWithPriority(
@@ -172,7 +173,7 @@ class EventRouter {
     const cooldown = this._priorityCooldowns[level] || 1000;
     const last = this._lastEventTime[level] || 0;
     if (now - last < cooldown) return false;
-    if (level !== 'CRITICAL' && this._contextGovernor?.isCriticalActive?.()) return false;
+    if (level !== 'CRITICAL' && this.contextGovernor?.isCriticalActive()) return false;
     this._lastEventTime[level] = now;
     handler();
     return true;

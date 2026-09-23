@@ -15,6 +15,10 @@ export interface VisionDetection {
   confidence: number;
 }
 
+export interface VoicePriorityPort {
+  speakPriority(text: string, priority: 'critical' | 'normal' | 'low'): void;
+}
+
 class SentraVisionAccessibility {
   private minConfidence: number;
   private cooldownMs: number;
@@ -90,15 +94,15 @@ class SentraVisionAccessibility {
     }
   }
 
-  private _voiceManager: any = null;
+  private voiceManager: VoicePriorityPort | null = null;
 
-  public setVoiceManager(vm: any): void {
-    this._voiceManager = vm;
+  public setVoiceManager(voiceManager: VoicePriorityPort): void {
+    this.voiceManager = voiceManager;
   }
 
   public announcePriority(text: string, priority: 'critical' | 'normal' | 'low' = 'normal'): void {
-    if (this._voiceManager?.speakPriority) {
-      this._voiceManager.speakPriority(text, priority);
+    if (this.voiceManager) {
+      this.voiceManager.speakPriority(text, priority);
       return;
     }
     this.announce(text);

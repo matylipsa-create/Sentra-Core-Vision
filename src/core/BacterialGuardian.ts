@@ -2,6 +2,7 @@ import { evolis } from './EVOLIS';
 import { usbService, USBDeviceInfo } from '../services/USBService';
 import { ternaryEthics, Trit, TernaryEvaluation, TRIT_POS, TRIT_NEG } from './TernaryMath';
 import { moralNode } from './MoralNode';
+import type { ContextGovernorPort } from './ContextGovernor';
 
 export type GuardianState = 'dormant' | 'active' | 'alert' | 'quarantine';
 
@@ -276,18 +277,18 @@ export class BacterialGuardian {
     for (const cb of this.listeners) cb(status);
   }
 
-  private _contextGovernor: any = null;
+  private contextGovernor: ContextGovernorPort | null = null;
 
-  public setContextGovernor(governor: any): void {
-    this._contextGovernor = governor;
+  public setContextGovernor(governor: ContextGovernorPort): void {
+    this.contextGovernor = governor;
   }
 
   public emitTernarySignal(signal: -1 | 0 | 1): void {
-    if (!this._contextGovernor) return;
+    if (!this.contextGovernor) return;
     if (signal === -1) {
-      this._contextGovernor.setPriorityLevel('CRITICAL');
+      this.contextGovernor.setPriorityLevel('CRITICAL');
     } else if (signal === 1) {
-      this._contextGovernor.setPriorityLevel('NAVIGATION');
+      this.contextGovernor.setPriorityLevel('NAVIGATION');
     }
   }
 }

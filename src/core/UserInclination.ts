@@ -30,8 +30,11 @@ export async function computeInclination(): Promise<UserProfile> {
   decisions.forEach((decision) => {
     if (decision.type !== 'preference') return;
     const value = decision.value;
-    if (value?.mode in modeCounts) modeCounts[value.mode as UserProfile['preferredMode']] += 1;
-    if (typeof value?.voiceRate === 'number') preferredVoiceRate = value.voiceRate;
+    if (!isRecord(value)) return;
+    if (typeof value.mode === 'string' && value.mode in modeCounts) {
+      modeCounts[value.mode as UserProfile['preferredMode']] += 1;
+    }
+    if (typeof value.voiceRate === 'number') preferredVoiceRate = value.voiceRate;
   });
 
   const preferredMode = (Object.entries(modeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'smooth') as UserProfile['preferredMode'];
@@ -39,6 +42,10 @@ export async function computeInclination(): Promise<UserProfile> {
   const frequentContexts = Array.from(new Set(patterns.map((pattern) => pattern.approximateLocation))).slice(0, 5);
   const confidence = Math.min(1, (decisions.length + patterns.length) / 10);
   return { preferredMode, preferredVoiceRate, activeHours, frequentContexts, confidence };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 export async function getSuggestions(): Promise<Suggestion[]> {

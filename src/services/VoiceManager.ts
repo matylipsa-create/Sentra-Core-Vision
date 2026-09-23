@@ -45,16 +45,25 @@ export class VoiceManager {
   private passiveActive = false;
   private passiveCallback: PassiveListenCallback | null = null;
   private passiveRestartTimer: number | null = null;
+  private readonly handleVoicesChanged = (): void => {
+    this.applySavedVoice();
+  };
 
   constructor() {
     if ('speechSynthesis' in window) {
       this.synth = window.speechSynthesis;
       this.selectedVoiceURI = this.loadSavedVoice();
       this.rate = this.loadSavedRate();
-      this.synth.addEventListener('voiceschanged', () => {
-        this.applySavedVoice();
-      });
+      this.synth.addEventListener('voiceschanged', this.handleVoicesChanged);
     }
+
+  }
+
+  dispose(): void {
+    this.stopPassiveListening();
+    this.stop();
+    this.synth?.removeEventListener('voiceschanged', this.handleVoicesChanged);
+    this.synth = null;
   }
 
   private loadSavedVoice(): string | null {

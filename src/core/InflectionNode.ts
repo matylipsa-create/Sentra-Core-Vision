@@ -10,7 +10,7 @@ export type DecisionType = 'mode_change' | 'veto' | 'preference' | 'action';
 export interface Decision {
   type: DecisionType;
   description: string;
-  value: any;
+  value: unknown;
   id?: string;
   timestamp?: number;
 }
@@ -51,8 +51,9 @@ function createId(): string {
 }
 
 function snapshotFromDecision(decision: Decision, suppliedState?: Partial<SystemSnapshot>): SystemSnapshot {
-  const candidate = decision.value && typeof decision.value === 'object'
-    ? decision.value.systemState
+  const decisionValue = isRecord(decision.value) ? decision.value : null;
+  const candidate = decisionValue && isRecord(decisionValue.systemState)
+    ? decisionValue.systemState
     : undefined;
   const snapshot = {
     activeModule: 'vision',
@@ -68,6 +69,10 @@ function snapshotFromDecision(decision: Decision, suppliedState?: Partial<System
     ...(suppliedState?.state ?? currentSystemState.state),
   };
   return snapshot;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 export function setCurrentSystemState(state: Partial<SystemSnapshot>): void {

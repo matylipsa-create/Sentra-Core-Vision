@@ -32,6 +32,9 @@ export class USBService {
   private infectedDevices: Set<string> = new Set();
   private listeners: Set<(devices: USBDeviceInfo[]) => void> = new Set();
   private monitoring = false;
+  private usb: USBDeviceManager | null = null;
+  private handleConnect: ((event: USBConnectionEvent) => void) | null = null;
+  private handleDisconnect: ((event: USBConnectionEvent) => void) | null = null;
 
   isSupported(): boolean {
     return typeof navigator !== 'undefined' && 'usb' in navigator;
@@ -95,15 +98,12 @@ export class USBService {
   startMonitoring(): void {
     if (this.monitoring || !this.isSupported()) return;
     this.monitoring = true;
-    const nav = navigator as Navigator & {
-      usb: {
-        addEventListener: (type: string, cb: (e: { device: USBDeviceInternal }) => void) => void;
-      };
-    };
-    nav.usb.addEventListener('connect', (e) => {
+    const nav = navigator as Navigator & { usb: USBDeviceManager };
+    this.usb = nav.usb;
+    this.handleConnect = (e) => {
       this.registerDevice(e.device);
-    });
-    nav.usb.addEventListener('disconnect', (e) => {
+    };
+    this.handleDisconnect = (e) => {
       const key = this.deviceKey(e.device);
       const info = this.devices.get(key);
       if (info) {
@@ -112,7 +112,19 @@ export class USBService {
         this.devices.set(key, info);
         this.notify();
       }
-    });
+    };
+    this.usb.addEventListener('connect', this.handleConnect);
+    this.usb.addEventListener('disconnect', this.handleDisconnect);
+  }
+
+  stopMonitoring(): void {
+    if (!this.usb) return;
+    if (this.handleConnect) this.usb.removeEventListener('connect', this.handleConnect);
+    if (this.handleDisconnect) this.usb.removeEventListener('disconnect', this.handleDisconnect);
+    this.handleConnect = null;
+    this.handleDisconnect = null;
+    this.usb = null;
+    this.monitoring = false;
   }
 
   authenticateDevice(key: string): boolean {
@@ -242,6 +254,16 @@ interface USBDeviceInternal {
   productName?: string | null;
   serialNumber?: string | null;
   connected?: boolean;
+}
+
+interface USBConnectionEvent {
+  device: USBDeviceInternal;
+}
+
+interface USBDeviceManager {
+  requestDevice(options: { filters: Record<string, unknown>[] }): Promise<USBDeviceInternal>;
+  addEventListener(type: 'connect' | 'disconnect', listener: (event: USBConnectionEvent) => void): void;
+  removeEventListener(type: 'connect' | 'disconnect', listener: (event: USBConnectionEvent) => void): void;
 }
 
 export const usbService = new USBService();
