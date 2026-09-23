@@ -1,3 +1,5 @@
+import { globalSensorFilter, globalVoiceQueue } from './SentraOptimizedEngine';
+
 export interface SystemMetrics {
   timestamp: number;
   mode: 'hybrid' | 'real' | 'simulated';
@@ -51,6 +53,7 @@ type WindowWithSensorState = Window & {
 export class SentraCoreEngine {
   private audioCtx: AudioContext | null = null;
   private cameraStream: MediaStream | null = null;
+  private orientationListener: ((event: DeviceOrientationEvent) => void) | null = null;
   private simulatedState = {
     lat: -38.0055,
     lon: -57.5426,
@@ -80,6 +83,7 @@ export class SentraCoreEngine {
           if (permission !== 'granted') {
             console.warn('[SentraCore] Permiso de orientación rechazado; se usará simulación.');
           }
+          this.registerOrientationListener();
         }
       }
 
@@ -94,6 +98,7 @@ export class SentraCoreEngine {
       }
 
       this.playAcousticPulse(440, 0.1);
+      globalVoiceQueue.enqueue('Núcleo Sentra activado.');
       return true;
     } catch (error) {
       console.warn(
@@ -101,6 +106,7 @@ export class SentraCoreEngine {
         error,
       );
       this.playAcousticPulse(440, 0.1);
+      globalVoiceQueue.enqueue('Modo híbrido activado. Sensores virtuales de respaldo.');
       return false;
     }
   }
@@ -130,6 +136,12 @@ export class SentraCoreEngine {
     stream?.getTracks().forEach((track) => track.stop());
     if (videoElement) videoElement.srcObject = null;
     this.cameraStream = null;
+    if (this.orientationListener) {
+      window.removeEventListener('deviceorientation', this.orientationListener);
+      this.orientationListener = null;
+    }
+    globalSensorFilter.reset();
+    globalVoiceQueue.enqueue('Núcleo Sentra desactivado.');
   }
 
   async fetchLiveMetrics(): Promise<SystemMetrics> {
@@ -157,6 +169,9 @@ export class SentraCoreEngine {
     const browserWindow = window as WindowWithSensorState;
     const hasRealGps = browserWindow.__realLat !== undefined && browserWindow.__realLon !== undefined;
     const hasRealOrientation = browserWindow.__lastAlpha !== undefined;
+    const rawAlpha = hasRealOrientation ? browserWindow.__lastAlpha! : this.simulatedState.alpha;
+    const rawBeta = hasRealOrientation ? browserWindow.__lastBeta ?? this.simulatedState.beta : this.simulatedState.beta;
+    const rawGamma = hasRealOrientation ? browserWindow.__lastGamma ?? this.simulatedState.gamma : this.simulatedState.gamma;
 
     return {
       timestamp,
@@ -170,9 +185,9 @@ export class SentraCoreEngine {
         },
         battery: { level: batteryLevel, charging: batteryCharging, source: batterySource },
         orientation: {
-          alpha: hasRealOrientation ? browserWindow.__lastAlpha! : this.simulatedState.alpha,
-          beta: hasRealOrientation ? browserWindow.__lastBeta ?? null : this.simulatedState.beta,
-          gamma: hasRealOrientation ? browserWindow.__lastGamma ?? null : this.simulatedState.gamma,
+          alpha: globalSensorFilter.filter('orientation.alpha', rawAlpha),
+          beta: globalSensorFilter.filter('orientation.beta', rawBeta),
+          gamma: globalSensorFilter.filter('orientation.gamma', rawGamma),
           source: hasRealOrientation ? 'real' : 'simulated',
         },
         camera: {
@@ -189,6 +204,17 @@ export class SentraCoreEngine {
         inferenceTimeMs: 12.4 + Number((Math.random() * 1.5).toFixed(1)),
       },
     };
+  }
+
+  private registerOrientationListener(): void {
+    if (this.orientationListener) return;
+    this.orientationListener = (event) => {
+      const browserWindow = window as WindowWithSensorState;
+      if (typeof event.alpha === 'number') browserWindow.__lastAlpha = event.alpha;
+      if (typeof event.beta === 'number') browserWindow.__lastBeta = event.beta;
+      if (typeof event.gamma === 'number') browserWindow.__lastGamma = event.gamma;
+    };
+    window.addEventListener('deviceorientation', this.orientationListener);
   }
 }
 
