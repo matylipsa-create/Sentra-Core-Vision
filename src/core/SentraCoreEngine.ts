@@ -123,6 +123,15 @@ export class SentraCoreEngine {
     }
   }
 
+  shutdownCore(videoElement?: HTMLVideoElement): void {
+    const stream = videoElement?.srcObject instanceof MediaStream
+      ? videoElement.srcObject
+      : this.cameraStream;
+    stream?.getTracks().forEach((track) => track.stop());
+    if (videoElement) videoElement.srcObject = null;
+    this.cameraStream = null;
+  }
+
   async fetchLiveMetrics(): Promise<SystemMetrics> {
     const timestamp = Date.now();
     const browserNavigator = navigator as NavigatorWithBattery;
