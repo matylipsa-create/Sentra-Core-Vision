@@ -539,7 +539,7 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 // ─── Bio tick broadcast ─────────────────────────────────
 
-setInterval(() => {
+const bioTickInterval = setInterval(() => {
   const bioState = bioSoftware.getState();
   if (bioState.currentSession) {
     const progress = bioSoftware.getProgress();
@@ -566,4 +566,31 @@ httpServer.listen(PORT, () => {
   console.log(`[Sentra Core API] WebSocket en ws://localhost:${PORT}`);
 });
 
-v
+let isShuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  clearInterval(bioTickInterval);
+
+  for (const client of clients) {
+    client.close();
+  }
+  clients.clear();
+
+  await new Promise<void>((resolve) => {
+    wss.close(() => resolve());
+  });
+  await new Promise<void>((resolve, reject) => {
+    httpServer.close((error) => (error ? reject(error) : resolve()));
+  });
+  console.log(`[Sentra Core API] Apagado limpio tras ${signal}.`);
+}
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    void shutdown(signal).catch((error) => {
+      console.error('[Sentra Core API] Error durante el apagado:', error);
+      process.exitCode = 1;
+    });
+  });
+}
