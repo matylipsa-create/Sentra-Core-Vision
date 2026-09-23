@@ -1,0 +1,15 @@
+{
+  "github.copilot.advanced": {
+    "inlineSuggest.enable": true
+  },
+  "editor.inlineSuggest.enabled": true,
+  "files.associations": {
+    "*.js": "javascript",
+    "*.ts": "typescript"
+  },
+  "editor.quickSuggestions": {
+    "other": "on",
+    "comments": "off",
+    "strings": "off"
+  }
+}
