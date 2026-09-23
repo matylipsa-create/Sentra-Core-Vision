@@ -9,6 +9,7 @@
     "obfuscate": "node scripts/obfuscate.js",
     "forge": "node scripts/sentra-forge.js",
     "forge:seal": "node scripts/sentra-forge.js --seal",
+    "rsi": "node scripts/sentra-rsi.js",
     "build:secure": "npm run build && npm run obfuscate",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"

@@ -54,6 +54,21 @@ Sentra Core es un motor paraguas de decisión ética y computación soberana. La
 
 ---
 
+## 🛡️ RSI en cuarentena
+
+El ciclo de automejora recursiva se ejecuta con:
+
+```bash
+npm run rsi
+```
+
+RSI solo lee `logs/execution_metrics.json` y, cuando encuentra una oportunidad,
+genera un borrador `.patch` en `quarantine/rsi/`. No modifica archivos de
+producción, no ejecuta parches y no elimina propuestas anteriores. Toda
+aplicación requiere revisión y veto humano determinista fuera de este proceso.
+
+---
+
 ## Licencia
 
 MIT © 2026 Matías Ariel Lipari
