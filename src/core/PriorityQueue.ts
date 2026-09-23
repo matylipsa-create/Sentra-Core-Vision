@@ -30,9 +30,10 @@ const COOLDOWN_MS: Record<PriorityLevel, number> = {
 
 const MAX_QUEUE = 100;
 
-class PriorityQueueManager {
+export class PriorityQueueManager {
   private queue: PriorityEvent[] = [];
   private lastDispatch: Map<string, number> = new Map();
+  private maxQueueSize = MAX_QUEUE;
 
   enqueue(event: Omit<PriorityEvent, 'id' | 'timestamp'>): PriorityEvent | null {
     const full: PriorityEvent = {
@@ -55,7 +56,7 @@ class PriorityQueueManager {
     }
 
     this.queue.sort((a, b) => LEVEL_VALUE[a.level] - LEVEL_VALUE[b.level]);
-    if (this.queue.length > MAX_QUEUE) this.queue.length = MAX_QUEUE;
+    if (this.queue.length > this.maxQueueSize) this.queue.length = this.maxQueueSize;
     return full;
   }
 
@@ -78,6 +79,14 @@ class PriorityQueueManager {
 
   size(): number {
     return this.queue.length;
+  }
+
+  setMaxQueueSize(maxQueueSize: number): void {
+    if (!Number.isInteger(maxQueueSize) || maxQueueSize <= 0) {
+      throw new RangeError('El tamaño máximo de la cola debe ser un entero positivo.');
+    }
+    this.maxQueueSize = maxQueueSize;
+    if (this.queue.length > maxQueueSize) this.queue.length = maxQueueSize;
   }
 
   hasCritical(): boolean {

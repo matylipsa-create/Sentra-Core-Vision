@@ -1,4 +1,12 @@
 import { globalSensorFilter, globalVoiceQueue } from './SentraOptimizedEngine';
+import { DeviceSensorManager, deviceSensorManager } from './DeviceSensorManager';
+import { PriorityQueueManager, priorityQueue, type PriorityEvent, type PriorityLevel } from './PriorityQueue';
+import { SecureStateRegistry } from './PerformancePrimitives';
+
+export interface SentraConfig {
+  autoRequestPermissions?: boolean;
+  maxQueueSize?: number;
+}
 
 export interface SystemMetrics {
   timestamp: number;
@@ -51,6 +59,9 @@ type WindowWithSensorState = Window & {
 };
 
 export class SentraCoreEngine {
+  public readonly sensors: DeviceSensorManager;
+  public readonly queue: PriorityQueueManager;
+  public readonly registry: SecureStateRegistry;
   private audioCtx: AudioContext | null = null;
   private cameraStream: MediaStream | null = null;
   private orientationListener: ((event: DeviceOrientationEvent) => void) | null = null;
@@ -62,6 +73,63 @@ export class SentraCoreEngine {
     beta: 42.1,
     gamma: -1.4,
   };
+  private isInitialized = false;
+  private readonly config: Required<SentraConfig>;
+
+  constructor(config: SentraConfig = {}) {
+    this.config = {
+      autoRequestPermissions: config.autoRequestPermissions ?? true,
+      maxQueueSize: config.maxQueueSize ?? 100,
+    };
+    this.sensors = deviceSensorManager;
+    this.queue = priorityQueue;
+    this.registry = new SecureStateRegistry();
+    this.queue.setMaxQueueSize(this.config.maxQueueSize);
+  }
+
+  async initialize(): Promise<boolean> {
+    if (this.isInitialized) return true;
+
+    try {
+      console.info('[SentraCore] Iniciando secuencias del motor...');
+      this.sensors.detectAvailableSensors();
+      if (this.config.autoRequestPermissions) {
+        await this.sensors.requestAllPermissions();
+      }
+      this.isInitialized = true;
+      console.info('[SentraCore] Motor enlazado y operativo.');
+      return true;
+    } catch (error) {
+      console.error('[SentraCore] Error crítico durante la inicialización:', error);
+      return false;
+    }
+  }
+
+  dispatchEvent(
+    type: string,
+    level: PriorityLevel,
+    payload: Record<string, unknown> = {},
+  ): PriorityEvent | null {
+    return this.queue.enqueue({
+      type,
+      level,
+      message: type,
+      data: payload,
+    });
+  }
+
+  async commitSnapshot(moduleName: string) {
+    return this.registry.commitAuditSnapshot(moduleName);
+  }
+
+  getSystemStatus() {
+    return {
+      initialized: this.isInitialized,
+      sensors: this.sensors.getState(),
+      queueSize: this.queue.size(),
+      timestamp: Date.now(),
+    };
+  }
 
   async initializeCore(videoElement?: HTMLVideoElement): Promise<boolean> {
     try {
@@ -99,6 +167,7 @@ export class SentraCoreEngine {
 
       this.playAcousticPulse(440, 0.1);
       globalVoiceQueue.enqueue('Núcleo Sentra activado.');
+      this.isInitialized = true;
       return true;
     } catch (error) {
       console.warn(
@@ -107,6 +176,7 @@ export class SentraCoreEngine {
       );
       this.playAcousticPulse(440, 0.1);
       globalVoiceQueue.enqueue('Modo híbrido activado. Sensores virtuales de respaldo.');
+      this.isInitialized = true;
       return false;
     }
   }
@@ -142,6 +212,7 @@ export class SentraCoreEngine {
     }
     globalSensorFilter.reset();
     globalVoiceQueue.enqueue('Núcleo Sentra desactivado.');
+    this.isInitialized = false;
   }
 
   async fetchLiveMetrics(): Promise<SystemMetrics> {

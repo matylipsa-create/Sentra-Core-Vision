@@ -15,9 +15,20 @@ function hasNavigator(): boolean {
   return typeof navigator !== 'undefined';
 }
 
-class DeviceSensorManager {
+export class DeviceSensorManager {
   private sensors: AvailableSensor[] = [];
   private listeners = new Set<SensorChangeListener>();
+
+  async requestAllPermissions(): Promise<boolean> {
+    if (!hasNavigator()) return false;
+
+    const permissionResults = await Promise.allSettled([
+      this.requestGeolocation(),
+      this.requestMotionPermission(),
+    ]);
+    this.detectAvailableSensors();
+    return permissionResults.some((result) => result.status === 'fulfilled' && result.value);
+  }
 
   detectAvailableSensors(): AvailableSensor[] {
     const nav = hasNavigator() ? navigator : null;
@@ -56,6 +67,32 @@ class DeviceSensorManager {
     this.listeners.add(listener);
     listener(this.sensors);
     return () => this.listeners.delete(listener);
+  }
+
+  getState(): ReadonlyArray<AvailableSensor> {
+    return this.sensors.map((sensor) => ({ ...sensor }));
+  }
+
+  private async requestGeolocation(): Promise<boolean> {
+    if (!('geolocation' in navigator)) return false;
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(true),
+        () => resolve(false),
+        { enableHighAccuracy: true, timeout: 4000, maximumAge: 30_000 },
+      );
+    });
+  }
+
+  private async requestMotionPermission(): Promise<boolean> {
+    if (typeof DeviceMotionEvent === 'undefined') return false;
+    const motionEvent = DeviceMotionEvent as typeof DeviceMotionEvent & {
+      requestPermission?: () => Promise<'granted' | 'denied'>;
+    };
+    if (!motionEvent.requestPermission) {
+      return typeof window !== 'undefined' && 'DeviceMotionEvent' in window;
+    }
+    return (await motionEvent.requestPermission()) === 'granted';
   }
 
   private notify(): void {
