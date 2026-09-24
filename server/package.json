@@ -10,7 +10,8 @@
   "dependencies": {
     "ws": "^8.16.0",
     "idb": "^8.0.0",
-    "mqtt": "^5.10.4"
+    "mqtt": "^5.10.4",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/ws": "^8.5.10",
