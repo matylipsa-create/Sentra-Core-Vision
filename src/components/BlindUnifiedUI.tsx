@@ -7,10 +7,29 @@ import { sensorModule } from "../modules/SensorModule";
 import { createSimulatedSensors } from "../sensors/SimulatedSensors";
 import { createNativeSensors } from "../services/NativeSensorService";
 import { createGPSSensor } from "../services/GPSSensorService";
+import type { HardwareTelemetryLogEntry } from "../services/HardwareTelemetryService";
 import { sentraGuardianHub } from "../core/SentraGuardianHub";
 import { BlindTactileQuadrants } from "./BlindTactileQuadrants";
 
-export function BlindUnifiedUI() {
+interface BlindUnifiedUIProps {
+  telemetry: HardwareTelemetryLogEntry[];
+}
+
+function describeTelemetry(entry: HardwareTelemetryLogEntry): string {
+  const { data } = entry;
+  switch (data.type) {
+    case "GPS":
+      return data.source === "ERROR"
+        ? `GPS no disponible: ${data.error}`
+        : `GPS ${data.lat.toFixed(5)}, ${data.lon.toFixed(5)} (±${Math.round(data.accuracy)} m)`;
+    case "BATTERY":
+      return `Batería ${data.level}% · ${data.charging ? "cargando" : "sin carga"}`;
+    case "ORIENTATION":
+      return `Orientación α ${data.alpha?.toFixed(1) ?? "--"}° · β ${data.beta?.toFixed(1) ?? "--"}° · γ ${data.gamma?.toFixed(1) ?? "--"}°`;
+  }
+}
+
+export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
   useEffect(() => {
     // Wiring multimodal: conecta hub → governor, router, accessibility, voice
     sentraGuardianHub.initMultimodal();
@@ -65,6 +84,22 @@ export function BlindUnifiedUI() {
 
   return (
     <main className="sentra-app-shell">
+      <section className="hardware-telemetry" aria-labelledby="hardware-telemetry-title">
+        <header className="hardware-telemetry-header">
+          <h2 id="hardware-telemetry-title">Telemetría de hardware</h2>
+          <span>{telemetry.length}/20</span>
+        </header>
+        <ol className="hardware-telemetry-list" aria-label="Eventos recientes de sensores reales">
+          {telemetry.length === 0 ? (
+            <li>Esperando lecturas de sensores...</li>
+          ) : telemetry.map((entry) => (
+            <li key={`${entry.timestamp}-${entry.data.type}`}>
+              <time dateTime={entry.timestamp}>{new Date(entry.timestamp).toLocaleTimeString("es-ES")}</time>
+              <span>{describeTelemetry(entry)}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
       <AccessibleSensorUI />
       <SensorDashboard />
       <BlindTactileQuadrants onAction={handleQuadrantAction} />

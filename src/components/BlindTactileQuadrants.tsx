@@ -112,7 +112,11 @@ export const BlindTactileQuadrants: React.FC<BlindTactileQuadrantsProps> = ({
       className={`blind-tactile-quadrants ${className}`}
       role="group"
       aria-label="Controles táctiles de Visión y Sentinel"
+      aria-describedby="blind-quadrant-help"
     >
+      <span id="blind-quadrant-help" className="blind-quadrant-visually-hidden">
+        Cada cuadrante anuncia su función. Toca un área para ejecutarla; con teclado, enfócala y usa Enter o Espacio.
+      </span>
       {QUADRANT_ORDER.map((q) => (
         <button
           key={q}

@@ -5,6 +5,10 @@ export type HardwareTelemetryUpdate =
   | { type: 'ORIENTATION'; alpha: number | null; beta: number | null; gamma: number | null; source: 'REAL' };
 
 export type HardwareTelemetryListener = (update: HardwareTelemetryUpdate) => void;
+export type HardwareTelemetryLogEntry = {
+  timestamp: string;
+  data: HardwareTelemetryUpdate;
+};
 
 type BatteryState = EventTarget & {
   level: number;
@@ -20,7 +24,10 @@ type PermissionedOrientationEvent = typeof DeviceOrientationEvent & {
 };
 
 export class HardwareTelemetryService {
-  static async initRealSensors(onUpdate: HardwareTelemetryListener): Promise<() => void> {
+  static async initRealSensors(
+    onUpdate: HardwareTelemetryListener,
+    options: { gps?: boolean } = {},
+  ): Promise<() => void> {
     let gpsWatchId: number | null = null;
     let battery: BatteryState | null = null;
     let disposed = false;
@@ -46,7 +53,7 @@ export class HardwareTelemetryService {
       }
     };
 
-    if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+    if (options.gps !== false && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
       try {
         gpsWatchId = navigator.geolocation.watchPosition(
           (position) => {
@@ -72,7 +79,7 @@ export class HardwareTelemetryService {
           source: 'ERROR',
         });
       }
-    } else {
+    } else if (options.gps !== false) {
       onUpdate({ type: 'GPS', error: 'Geolocalización no soportada.', source: 'ERROR' });
     }
 

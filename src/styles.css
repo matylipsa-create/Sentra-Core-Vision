@@ -33,14 +33,20 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 .sentra-app-shell { min-height: 100vh; }
+.hardware-telemetry { max-width: 1400px; margin: 0 auto; padding: 76px 32px 0; width: 100%; }
+.hardware-telemetry-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--text-bright); font-size: 0.78rem; }
+.hardware-telemetry-header h2 { font-size: 0.9rem; }
+.hardware-telemetry-list { display: flex; gap: 8px; overflow-x: auto; list-style: none; padding: 8px 0 0; }
+.hardware-telemetry-list li { display: flex; flex: 0 0 auto; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text); font-size: 0.75rem; }
+.hardware-telemetry-list time { color: #b8b8c8; white-space: nowrap; }
 
 /* ═══ SENSOR UI ═══ */
 .accessible-sensor-ui { max-width: 1400px; margin: 0 auto; padding: 28px 32px 12px; }
 .sensor-ui-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
 .sensor-ui-eyebrow { color: var(--accent); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }
 .sensor-ui-header h2 { color: var(--text-bright); font-size: 1.45rem; line-height: 1.2; }
-.sensor-ui-description { color: var(--text-dim); max-width: 680px; margin: 8px 0 20px; }
-.sensor-ui-refresh, .accessible-sensor-card button { min-height: 56px; padding: 12px 18px; border: 1px solid var(--primary-dark); border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--primary-light); cursor: pointer; transition: 0.2s ease; }
+.sensor-ui-description { color: #b8b8c8; max-width: 680px; margin: 8px 0 20px; }
+.sensor-ui-refresh, .accessible-sensor-card button { min-width: 44px; min-height: 56px; padding: 12px 18px; border: 1px solid var(--primary-dark); border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--primary-light); cursor: pointer; transition: 0.2s ease; }
 .sensor-ui-refresh:hover, .accessible-sensor-card button:hover:not(:disabled) { border-color: var(--neon-focus); color: var(--neon-focus); transform: translateY(-1px); }
 .accessible-sensor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .accessible-sensor-card { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); transition: border-color 0.2s, box-shadow 0.2s; }
@@ -49,15 +55,16 @@
 .accessible-sensor-card strong { color: var(--text-bright); font-size: 0.92rem; }
 .sensor-status-dot { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: var(--text-dim); }
 .is-active .sensor-status-dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
-.sensor-device { color: var(--text-dim); font-size: 0.7rem; margin-left: auto; }
-.accessible-sensor-card p { color: var(--text-dim); font-size: 0.78rem; }
+.sensor-device { color: #b8b8c8; font-size: 0.7rem; margin-left: auto; }
+.accessible-sensor-card p { color: #b8b8c8; font-size: 0.78rem; }
 .accessible-sensor-card button { grid-column: 1 / -1; width: 100%; }
-.accessible-sensor-card button:disabled { opacity: 0.45; cursor: not-allowed; }
+.accessible-sensor-card button:disabled { opacity: 1; color: #b8b8c8; border-color: #747487; cursor: not-allowed; }
 
 @media (max-width: 700px) {
   .accessible-sensor-ui { padding: 20px 16px 8px; }
   .sensor-ui-header { align-items: stretch; flex-direction: column; }
   .sensor-ui-refresh { width: 100%; }
+  .hardware-telemetry { padding: 76px 16px 0; }
 }
 
 /* ═══ GLOBAL ═══ */
