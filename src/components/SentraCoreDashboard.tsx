@@ -5,6 +5,7 @@ import {
   sentraFullAwaken,
   type SystemMetrics,
 } from '../core/SentraCoreEngine';
+import { EngineStartButton } from './EngineStartButton';
 
 const INITIAL_BARS = [40, 70, 45, 90, 60, 85, 30, 95, 50, 75];
 const MAX_TELEMETRY_EVENTS = 25;
@@ -15,7 +16,11 @@ type TelemetryEvent = {
   status: string;
 };
 
-export function SentraCoreDashboard() {
+interface SentraCoreDashboardProps {
+  onOpenVisionDemo?: () => void;
+}
+
+export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardProps = {}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [isSystemActive, setIsSystemActive] = useState(false);
@@ -157,6 +162,24 @@ export function SentraCoreDashboard() {
             </button>
           </div>
         </header>
+
+        <div className="flex flex-col items-center gap-4 rounded-lg border border-[#00ffcc]/20 bg-[#0a0a0f]/60 p-4 sm:flex-row sm:justify-center sm:gap-10">
+          <EngineStartButton />
+          {onOpenVisionDemo && (
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpenVisionDemo}
+                className="rounded-full border-2 border-[#00ffcc]/60 bg-[#00ffcc]/5 px-8 py-3 font-mono text-sm font-bold tracking-[0.2em] text-[#00ffcc]/90 shadow-[0_0_12px_rgba(0,255,204,0.25)] transition-all hover:border-[#00ffcc] hover:bg-[#00ffcc]/15 hover:shadow-[0_0_20px_rgba(0,255,204,0.45)]"
+              >
+                VISIÓN
+              </button>
+              <p className="max-w-[220px] text-center text-[10px] leading-tight text-zinc-500">
+                Demo interactiva real (cámara + detección), tal como funciona hoy en la web. Versión nativa Flutter para Android: en roadmap Q4 2026.
+              </p>
+            </div>
+          )}
+        </div>
 
         {error && <p className="rounded border border-red-500/50 bg-red-950/30 p-3 text-sm text-red-300" role="alert">{error}</p>}
 

@@ -33,7 +33,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 .sentra-app-shell { min-height: 100vh; }
-.hardware-telemetry { max-width: 1400px; margin: 0 auto; padding: 76px 32px 0; width: 100%; }
+.hardware-telemetry { position: relative; z-index: 20; max-width: 1400px; margin: 0 auto; padding: 76px 32px 0; width: 100%; }
 .hardware-telemetry-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--text-bright); font-size: 0.78rem; }
 .hardware-telemetry-header h2 { font-size: 0.9rem; }
 .hardware-telemetry-list { display: flex; gap: 8px; overflow-x: auto; list-style: none; padding: 8px 0 0; }
@@ -41,7 +41,7 @@
 .hardware-telemetry-list time { color: #b8b8c8; white-space: nowrap; }
 
 /* ═══ SENSOR UI ═══ */
-.accessible-sensor-ui { max-width: 1400px; margin: 0 auto; padding: 28px 32px 12px; }
+.accessible-sensor-ui { position: relative; z-index: 20; max-width: 1400px; margin: 0 auto; padding: 28px 32px 12px; }
 .sensor-ui-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
 .sensor-ui-eyebrow { color: var(--accent); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }
 .sensor-ui-header h2 { color: var(--text-bright); font-size: 1.45rem; line-height: 1.2; }
@@ -563,15 +563,26 @@ body {
 .blind-chip--guardian-on { color: var(--accent); border-color: var(--accent-dark); }
 .blind-chip--guardian-off { color: var(--text-dim); }
 .blind-content { flex: 1; padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
-.blind-vision-panel { display: flex; flex-direction: column; gap: var(--space-2); }
+.blind-vision-panel { position: relative; z-index: 20; display: flex; flex-direction: column; gap: var(--space-2); max-width: 1400px; margin: 0 auto; padding: 20px 32px; pointer-events: none; }
+.blind-vision-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.blind-vision-status { color: var(--accent); font-size: 0.8rem; }
+.blind-live-video { width: 100%; max-height: 280px; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #050507; object-fit: cover; pointer-events: none; }
+.blind-vision-actions { display: flex; flex-wrap: wrap; gap: 12px; pointer-events: none; }
 .blind-panel-title { font-size: 1.4rem; font-weight: 700; color: #fff; }
 .blind-panel-desc { font-size: 0.9rem; color: #ccc; line-height: 1.5; }
 .blind-hidden-video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }
 .blind-vision-controls { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .blind-action-btn { min-height: 56px; min-width: 56px; padding: 14px 24px; border-radius: var(--radius-sm); border: 2px solid var(--primary-dark); background: var(--bg-elevated); color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.blind-vision-actions .blind-action-btn { pointer-events: auto; }
 .blind-action-btn:hover { border-color: var(--neon-focus); }
 .blind-action-btn:active { transform: scale(0.96); }
 .blind-action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .blind-vision-panel { padding: 16px; }
+  .blind-vision-heading { align-items: flex-start; flex-direction: column; }
+  .blind-vision-actions { display: grid; grid-template-columns: 1fr; }
+  .blind-action-btn { width: 100%; }
+}
 .blind-camera-btn { border-color: var(--accent-dark); color: var(--accent); }
 .blind-describe-btn { border-color: var(--primary-dark); color: var(--primary-light); }
 .blind-loading { font-size: 0.9rem; color: var(--warning); text-align: center; padding: var(--space-2); }
@@ -643,7 +654,7 @@ body {
 }
 
 /* ═══ BLIND TACTILE QUADRANTS ═══ */
-.blind-tactile-quadrants { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; z-index: 9998; pointer-events: none; }
+.blind-tactile-quadrants { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; z-index: 10; pointer-events: none; }
 .blind-quadrant { background: transparent; border: 1px solid rgba(255, 255, 255, 0.03); min-height: 56px; min-width: 56px; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: background 0.15s ease; }
 .blind-quadrant:active { background: rgba(0, 255, 200, 0.12); }
 .blind-quadrant:focus, .blind-quadrant:focus-visible { background: rgba(0, 255, 200, 0.08); outline: 3px solid var(--neon-focus); outline-offset: -3px; }

@@ -31,7 +31,8 @@ export function useRealModeSensors(
     loading: true, error: null, detections: [], perception: null, lastEval: null,
   });
   const modelRef = useRef<CocoSsdModel | null>(null);
-  const intervalRef = useRef<number | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const lastAuditRef = useRef({ signature: '', timestamp: 0 });
   const perceptionEngine = useRef(new PerceptionEngine());
 
   useEffect(() => {
@@ -69,29 +70,47 @@ export function useRealModeSensors(
 
     return () => {
       cancelled = true;
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     };
   }, [active]);
 
   useEffect(() => {
     if (!active || state.loading || !modelRef.current) return;
-    let lastProcessTime = 0;
+    let adaptiveIntervalMs = intervalMs;
+    let cancelled = false;
+
+    const scheduleNext = () => {
+      if (!cancelled) {
+        timeoutRef.current = window.setTimeout(() => void detect(), adaptiveIntervalMs);
+      }
+    };
 
     async function detect() {
+      if (cancelled) return;
       const video = videoRef.current;
       const model = modelRef.current;
-      if (!video || !model) return;
-      if (video.readyState < 2) {
+      if (!video || !model) {
+        scheduleNext();
         return;
       }
-      const now = Date.now();
-      if (now - lastProcessTime < 1000) return;
-      lastProcessTime = now;
+      if (video.readyState < 2) {
+        scheduleNext();
+        return;
+      }
+
+      const startedAt = performance.now();
       try {
         const predictions = await model.detect(video);
+        const inferenceMs = performance.now() - startedAt;
+        if (inferenceMs >= adaptiveIntervalMs * 0.8) {
+          adaptiveIntervalMs = Math.min(10000, adaptiveIntervalMs + Math.max(500, Math.ceil(inferenceMs / 500) * 250));
+        } else if (inferenceMs < adaptiveIntervalMs * 0.35) {
+          adaptiveIntervalMs = Math.max(intervalMs, adaptiveIntervalMs - 250);
+        }
+
         const detections: Detection[] = predictions.map((p) => ({
           class: p.class, score: p.score, bbox: p.bbox as [number, number, number, number],
         }));
@@ -102,8 +121,15 @@ export function useRealModeSensors(
           imageHeight: video.videoHeight || 300,
         });
         const eval_ = moralNode.evaluate(`detect: ${detections.map((d) => d.class).join(', ')}`);
-        if (eval_.allowed && detections.length > 0) {
-          await evolis.record('vision', 'detection', JSON.stringify(detections.slice(0, 3)));
+        const labels = [...new Set(detections.map((detection) => detection.class))].sort();
+        const signature = labels.join('|');
+        const auditNow = Date.now();
+        const lastAudit = lastAuditRef.current;
+        if (eval_.allowed && labels.length > 0
+          && (signature !== lastAudit.signature || auditNow - lastAudit.timestamp >= 30000)) {
+          lastAuditRef.current = { signature, timestamp: auditNow };
+          void evolis.record('vision', 'detection_summary', JSON.stringify({ labels, count: detections.length }))
+            .catch((auditError: unknown) => console.warn('[COCO-SSD] No se pudo registrar el resumen:', auditError));
         }
         setState((s) => ({
           ...s, detections, perception,
@@ -111,14 +137,16 @@ export function useRealModeSensors(
         }));
       } catch (detectionError: unknown) {
         console.warn('[COCO-SSD] Error transitorio durante inferencia.', detectionError);
+      } finally {
+        scheduleNext();
       }
     }
-    detect();
-    intervalRef.current = window.setInterval(detect, intervalMs);
+    void detect();
     return () => {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      cancelled = true;
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     };
   }, [active, state.loading, intervalMs, videoRef]);

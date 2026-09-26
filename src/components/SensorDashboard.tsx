@@ -369,6 +369,8 @@ function formatReading(reading: SensorReading): string[] {
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
+    position: "relative",
+    zIndex: 20,
     minHeight: "100vh",
     backgroundColor: "#0a0e1a",
     color: "#e2e8f0",

@@ -316,7 +316,16 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
   }, [isActive]);
 
   useEffect(() => {
+    const isInteractiveTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) return false;
+      return Boolean(target.closest('button, [role="button"], input, select, textarea, a'));
+    };
+
     const handleDoubleTap = (e: TouchEvent) => {
+      if (isInteractiveTarget(e.target)) {
+        lastTapRef.current = 0;
+        return;
+      }
       const now = Date.now();
       if (now - lastTapRef.current < 300 && lastTapRef.current > 0) {
         e.preventDefault();

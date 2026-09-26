@@ -10,15 +10,15 @@ import { spatialAudioEngine } from '../core/SpatialAudioEngine';
 import { deviceManager } from '../core/DeviceManager';
 
 interface BlindTactileQuadrantsProps {
-  onAction?: (action: string, quadrant: string) => void;
+  onAction?: (action: string, quadrant: string, gesture: 'tap' | 'longPress') => void;
   className?: string;
 }
 
 const QUADRANT_LABELS: Record<Quadrant, string> = {
-  TOP_LEFT: 'Modo ojos. Toque para conmutar entre lectura de colectivos y detección de objetos.',
+  TOP_LEFT: 'Visión en vivo. Toque para iniciar o detener la cámara.',
   TOP_RIGHT: 'Descripción instantánea. Toque para describir lo que hay enfrente.',
   BOTTOM_LEFT: 'Estado del guardián perimetral. Toque para reporte de seguridad.',
-  BOTTOM_RIGHT: 'Fijar perímetro o botón de pánico. Toque largo para silenciar todo.',
+  BOTTOM_RIGHT: 'Silenciar voz y audio. Mantenga pulsado para cancelar las alertas.',
 };
 
 const QUADRANT_ORDER: Quadrant[] = [
@@ -86,7 +86,7 @@ export const BlindTactileQuadrants: React.FC<BlindTactileQuadrantsProps> = ({
 
       if (onAction) {
         const action = getActionForQuadrant(q);
-        onAction(action, q);
+        onAction(action, q, duration >= 600 ? 'longPress' : 'tap');
       }
     },
     [onAction]
@@ -100,7 +100,7 @@ export const BlindTactileQuadrants: React.FC<BlindTactileQuadrantsProps> = ({
         quadrantGestures.handleGesture(q, 100);
         if (onAction) {
           const action = getActionForQuadrant(q);
-          onAction(action, q);
+          onAction(action, q, 'tap');
         }
       }
     },

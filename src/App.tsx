@@ -26,7 +26,7 @@ export default function App() {
   if (route === '/core') {
     return (
       <>
-        <nav className="fixed right-4 top-4 z-10 flex gap-2">
+        <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000] flex gap-2">
           <button type="button" onClick={() => navigate('/blind')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
             MODO ACCESIBLE
           </button>
@@ -34,7 +34,7 @@ export default function App() {
             VOLVER A VISIÓN
           </button>
         </nav>
-        <SentraCoreDashboard />
+        <SentraCoreDashboard onOpenVisionDemo={() => navigate('/')} />
       </>
     );
   }
@@ -42,7 +42,7 @@ export default function App() {
   if (route === '/blind') {
     return (
       <>
-        <nav className="fixed right-4 top-4 z-10 flex gap-2">
+        <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000] flex gap-2">
           <button type="button" onClick={() => navigate('/core')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
             SENTRA CORE
           </button>
@@ -57,7 +57,7 @@ export default function App() {
 
   return (
     <>
-      <nav className="fixed right-4 top-4 z-10 flex gap-2">
+      <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000] flex gap-2">
         <button type="button" onClick={() => navigate('/blind')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
           MODO ACCESIBLE
         </button>

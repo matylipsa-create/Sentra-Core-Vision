@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { SensorDashboard } from "./SensorDashboard";
 import { AccessibleSensorUI } from "./AccessibleSensorUI";
 import { sensorHub } from "../core/SensorHub";
@@ -10,6 +10,8 @@ import { createGPSSensor } from "../services/GPSSensorService";
 import type { HardwareTelemetryLogEntry } from "../services/HardwareTelemetryService";
 import { sentraGuardianHub } from "../core/SentraGuardianHub";
 import { BlindTactileQuadrants } from "./BlindTactileQuadrants";
+import { BlindVisionPanel, type BlindVisionPanelActions } from "./BlindVisionPanel";
+import { voiceManager } from "../services/VoiceManager";
 
 interface BlindUnifiedUIProps {
   telemetry: HardwareTelemetryLogEntry[];
@@ -30,6 +32,8 @@ function describeTelemetry(entry: HardwareTelemetryLogEntry): string {
 }
 
 export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
+  const visionActionsRef = useRef<BlindVisionPanelActions>(null);
+
   useEffect(() => {
     // Wiring multimodal: conecta hub → governor, router, accessibility, voice
     sentraGuardianHub.initMultimodal();
@@ -59,11 +63,13 @@ export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
     };
   }, []);
 
-  const handleQuadrantAction = (action: string) => {
+  const handleQuadrantAction = (action: string, _quadrant: string, gesture: 'tap' | 'longPress') => {
     switch (action) {
       case 'TOGGLE_EYES_MODE':
+        visionActionsRef.current?.toggleCamera();
+        break;
       case 'DESCRIBE_NOW':
-        sentraGuardianHub.requestDescription();
+        visionActionsRef.current?.describeNow();
         break;
       case 'SENTINEL_STATUS': {
         const state = sentraGuardianHub.getState();
@@ -77,7 +83,12 @@ export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
         break;
       }
       case 'PANIC_OR_PERIMETER':
-        sentraGuardianHub.silenceAll();
+        if (gesture === 'longPress') {
+          sentraGuardianHub.silenceAll();
+          try { navigator.vibrate?.([100, 60, 100]); } catch { /* optional haptics */ }
+        } else {
+          voiceManager.speak('Mantén pulsado este cuadrante para silenciar todas las alertas.', 3);
+        }
         break;
     }
   };
@@ -101,6 +112,7 @@ export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
         </ol>
       </section>
       <AccessibleSensorUI />
+      <BlindVisionPanel ref={visionActionsRef} />
       <SensorDashboard />
       <BlindTactileQuadrants onAction={handleQuadrantAction} />
     </main>
