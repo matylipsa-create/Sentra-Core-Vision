@@ -11,6 +11,7 @@ export interface Inclination {
 }
 
 const STORE_NAME = 'decision_history';
+const MAX_HISTORY_SIZE = 100;
 
 function normalizeDecision(decision: Decision): Decision {
   return {
@@ -24,7 +25,15 @@ export async function recordDecision(decision: Decision): Promise<void> {
   const evaluation = moralNode.evaluate(JSON.stringify({ action: 'record_decision', decision }));
   if (!evaluation.allowed) return;
   const db = await openSovereigntyDB();
-  await db.put(STORE_NAME, normalizeDecision(decision));
+  const transaction = db.transaction(STORE_NAME, 'readwrite');
+  const store = transaction.store;
+  await store.put(normalizeDecision(decision));
+  const history = await store.index('timestamp').getAll();
+  if (history.length > MAX_HISTORY_SIZE) {
+    history.sort((first, second) => (first.timestamp ?? 0) - (second.timestamp ?? 0));
+    await Promise.all(history.slice(0, history.length - MAX_HISTORY_SIZE).map((entry) => store.delete(entry.id!)));
+  }
+  await transaction.done;
 }
 
 export async function getHistory(limit: number): Promise<Decision[]> {

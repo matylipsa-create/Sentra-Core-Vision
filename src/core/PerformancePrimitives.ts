@@ -6,6 +6,7 @@
  */
 
 import { sha256 } from '../lib/crypto';
+import { storageService } from '../services/StorageService';
 
 export type ResetFunction<T> = (item: T) => void;
 
@@ -137,10 +138,17 @@ export interface AuditRecord {
 }
 
 const GENESIS_HASH = '0'.repeat(64);
+const LAST_HASH_STORAGE_KEY = 'secure_last_hash';
 
 export class SecureStateRegistry {
   private readonly state = new Map<string, unknown>();
   private lastHash = GENESIS_HASH;
+  private readonly persistenceReady: Promise<void>;
+  private commitTail: Promise<void> = Promise.resolve();
+
+  constructor() {
+    this.persistenceReady = this.loadLastHash();
+  }
 
   set(key: string, value: unknown): void {
     if (key.trim().length === 0) throw new Error('La clave de estado no puede estar vacía.');
@@ -160,28 +168,52 @@ export class SecureStateRegistry {
       throw new Error('El nombre del módulo no puede estar vacío.');
     }
 
-    const statePayload = Object.fromEntries(this.state);
-    const timestamp = Date.now();
-    const rawData = `${this.lastHash}:${timestamp}:${moduleName}:${JSON.stringify(statePayload)}`;
-    const signature = await sha256(rawData);
-    const record: AuditRecord = Object.freeze({
-      id: `audit-${timestamp}-${signature.slice(0, 12)}`,
-      timestamp,
-      module: moduleName,
-      statePayload: Object.freeze(statePayload),
-      previousHash: this.lastHash,
-      signature,
+    const task = this.commitTail.then(async () => {
+      await this.persistenceReady;
+      const statePayload = Object.fromEntries(this.state);
+      const timestamp = Date.now();
+      const previousHash = this.lastHash;
+      const rawData = `${previousHash}:${timestamp}:${moduleName}:${JSON.stringify(statePayload)}`;
+      const signature = await sha256(rawData);
+      await storageService.saveState(LAST_HASH_STORAGE_KEY, signature);
+      const record: AuditRecord = Object.freeze({
+        id: `audit-${timestamp}-${signature.slice(0, 12)}`,
+        timestamp,
+        module: moduleName,
+        statePayload: Object.freeze(statePayload),
+        previousHash,
+        signature,
+      });
+      this.lastHash = signature;
+      return record;
     });
-    this.lastHash = signature;
-    return record;
+    this.commitTail = task.then(() => undefined, () => undefined);
+    return task;
   }
 
   getLastHash(): string {
     return this.lastHash;
   }
 
-  clearRegistry(): void {
-    this.state.clear();
-    this.lastHash = GENESIS_HASH;
+  async clearRegistry(): Promise<void> {
+    const task = this.commitTail.then(async () => {
+      await this.persistenceReady;
+      this.state.clear();
+      await storageService.saveState(LAST_HASH_STORAGE_KEY, GENESIS_HASH);
+      this.lastHash = GENESIS_HASH;
+    });
+    this.commitTail = task.then(() => undefined, () => undefined);
+    await task;
+  }
+
+  private async loadLastHash(): Promise<void> {
+    try {
+      const saved = await storageService.loadState<unknown>(LAST_HASH_STORAGE_KEY);
+      if (typeof saved === 'string' && /^[a-f\d]{64}$/i.test(saved)) {
+        this.lastHash = saved;
+      }
+    } catch (error) {
+      console.warn('[SecureStateRegistry] No se pudo cargar la huella persistida:', error);
+    }
   }
 }

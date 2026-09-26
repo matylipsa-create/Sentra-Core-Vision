@@ -2,6 +2,7 @@ import { globalSensorFilter, globalVoiceQueue } from './SentraOptimizedEngine';
 import { DeviceSensorManager, deviceSensorManager } from './DeviceSensorManager';
 import { PriorityQueueManager, priorityQueue, type PriorityEvent, type PriorityLevel } from './PriorityQueue';
 import { SecureStateRegistry } from './PerformancePrimitives';
+import { HardwareTelemetryService, type HardwareTelemetryUpdate } from '../services/HardwareTelemetryService';
 
 export interface SentraConfig {
   autoRequestPermissions?: boolean;
@@ -57,6 +58,8 @@ type WindowWithSensorState = Window & {
   __cameraActive?: boolean;
   __cameraStream?: MediaStream | null;
   __gpsSource?: 'REAL_GPS_ACTIVE' | 'FALLBACK_MGP';
+  __batteryLevel?: number;
+  __batteryCharging?: boolean;
 };
 
 type PermissionedSensorEvent = {
@@ -72,9 +75,8 @@ export class SentraCoreEngine {
   private microphoneStream: MediaStream | null = null;
   private audioAnalyser: AnalyserNode | null = null;
   private audioSamples: Uint8Array<ArrayBuffer> | null = null;
-  private orientationListener: ((event: DeviceOrientationEvent) => void) | null = null;
   private motionListener: ((event: DeviceMotionEvent) => void) | null = null;
-  private gpsWatchId: number | null = null;
+  private stopHardwareTelemetry: (() => void) | null = null;
   private lastMotionAlertAt = 0;
   private lastAcceleration = { x: null as number | null, y: null as number | null, z: null as number | null };
   private simulatedState = {
@@ -171,9 +173,12 @@ export class SentraCoreEngine {
     } catch (error) {
       console.info('[SentraCore] Feedback háptico no disponible:', error);
     }
-    this.startGeolocation();
-
     try {
+      if (!this.stopHardwareTelemetry) {
+        this.stopHardwareTelemetry = await HardwareTelemetryService.initRealSensors(
+          (update) => this.handleHardwareTelemetry(update),
+        );
+      }
       const AudioContextClass = window.AudioContext
         || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (AudioContextClass && !this.audioCtx) {
@@ -249,14 +254,11 @@ export class SentraCoreEngine {
     this.cameraStream = null;
     this.microphoneStream = null;
     this.audioAnalyser = null;
-    if (this.gpsWatchId !== null && 'geolocation' in navigator) {
-      navigator.geolocation.clearWatch(this.gpsWatchId);
-      this.gpsWatchId = null;
-    }
-    if (this.orientationListener) {
-      window.removeEventListener('deviceorientation', this.orientationListener);
-      this.orientationListener = null;
-    }
+    this.stopHardwareTelemetry?.();
+    this.stopHardwareTelemetry = null;
+    const browserWindow = window as WindowWithSensorState;
+    delete browserWindow.__batteryLevel;
+    delete browserWindow.__batteryCharging;
     if (this.motionListener) {
       window.removeEventListener('devicemotion', this.motionListener);
       this.motionListener = null;
@@ -275,11 +277,14 @@ export class SentraCoreEngine {
   async fetchLiveMetrics(): Promise<SystemMetrics> {
     const timestamp = Date.now();
     const browserNavigator = navigator as NavigatorWithBattery;
-    let batteryLevel: number | null = null;
-    let batteryCharging: boolean | null = null;
-    let batterySource: 'real' | 'simulated' = 'simulated';
+    const browserWindow = window as WindowWithSensorState;
+    let batteryLevel: number | null = browserWindow.__batteryLevel === undefined
+      ? null
+      : browserWindow.__batteryLevel / 100;
+    let batteryCharging: boolean | null = browserWindow.__batteryCharging ?? null;
+    let batterySource: 'real' | 'simulated' = batteryLevel === null ? 'simulated' : 'real';
 
-    if (browserNavigator.getBattery) {
+    if (batteryLevel === null && browserNavigator.getBattery) {
       try {
         const battery = await browserNavigator.getBattery();
         batteryLevel = battery.level;
@@ -294,7 +299,6 @@ export class SentraCoreEngine {
       batteryCharging = false;
     }
 
-    const browserWindow = window as WindowWithSensorState;
     const hasRealGps = browserWindow.__realLat !== undefined && browserWindow.__realLon !== undefined;
     const hasRealOrientation = browserWindow.__lastAlpha !== undefined;
     const rawAlpha = hasRealOrientation ? browserWindow.__lastAlpha! : this.simulatedState.alpha;
@@ -335,33 +339,30 @@ export class SentraCoreEngine {
     };
   }
 
-  private registerOrientationListener(): void {
-    if (this.orientationListener) return;
-    this.orientationListener = (event) => {
-      const browserWindow = window as WindowWithSensorState;
-      if (typeof event.alpha === 'number') browserWindow.__lastAlpha = event.alpha;
-      if (typeof event.beta === 'number') browserWindow.__lastBeta = event.beta;
-      if (typeof event.gamma === 'number') browserWindow.__lastGamma = event.gamma;
-    };
-    window.addEventListener('deviceorientation', this.orientationListener);
-  }
-
-  private startGeolocation(): void {
-    if (!('geolocation' in navigator) || this.gpsWatchId !== null) return;
+  private handleHardwareTelemetry(update: HardwareTelemetryUpdate): void {
     const browserWindow = window as WindowWithSensorState;
-    this.gpsWatchId = navigator.geolocation.watchPosition(
-      (position) => {
-        browserWindow.__realLat = position.coords.latitude;
-        browserWindow.__realLon = position.coords.longitude;
-        browserWindow.__realAcc = position.coords.accuracy;
-        browserWindow.__gpsSource = 'REAL_GPS_ACTIVE';
-      },
-      (error) => {
-        browserWindow.__gpsSource = 'FALLBACK_MGP';
-        console.warn('[SentraCore] GPS no disponible; se usa la posición de respaldo MGP.', error);
-      },
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 },
-    );
+    switch (update.type) {
+      case 'GPS':
+        if (update.source === 'REAL') {
+          browserWindow.__realLat = update.lat;
+          browserWindow.__realLon = update.lon;
+          browserWindow.__realAcc = update.accuracy;
+          browserWindow.__gpsSource = 'REAL_GPS_ACTIVE';
+        } else {
+          browserWindow.__gpsSource = 'FALLBACK_MGP';
+          console.warn('[SentraCore] GPS no disponible; se usa la posición de respaldo MGP:', update.error);
+        }
+        break;
+      case 'BATTERY':
+        browserWindow.__batteryLevel = update.level;
+        browserWindow.__batteryCharging = update.charging;
+        break;
+      case 'ORIENTATION':
+        if (typeof update.alpha === 'number') browserWindow.__lastAlpha = update.alpha;
+        if (typeof update.beta === 'number') browserWindow.__lastBeta = update.beta;
+        if (typeof update.gamma === 'number') browserWindow.__lastGamma = update.gamma;
+        break;
+    }
   }
 
   private async requestMotionAndOrientationPermissions(): Promise<void> {
@@ -374,11 +375,6 @@ export class SentraCoreEngine {
         return false;
       }
     };
-
-    if ('DeviceOrientationEvent' in window && !this.orientationListener) {
-      const allowed = await requestPermission(DeviceOrientationEvent as unknown as PermissionedSensorEvent);
-      if (allowed) this.registerOrientationListener();
-    }
 
     if ('DeviceMotionEvent' in window && !this.motionListener) {
       const allowed = await requestPermission(DeviceMotionEvent as unknown as PermissionedSensorEvent);
