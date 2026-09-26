@@ -3,7 +3,7 @@ import { voiceManager } from '../services/VoiceManager';
 import { deviceManager } from '../core/DeviceManager';
 
 const ONBOARDED_KEY = 'sentra-onboarded';
-const WELCOME_TTS = 'Bienvenido a Sentra Visión. Toque el botón para activar la cámara. Doble toque en cualquier parte para activar o desactivar.';
+const WELCOME_TTS = 'Bienvenido a Sentra Visión. Usa el botón para activar la cámara. También puedes dar doble toque en el fondo para activar o desactivar.';
 
 interface VisionOnboardingProps {
   children: ReactNode;
@@ -59,7 +59,7 @@ export function VisionOnboarding({ children }: VisionOnboardingProps) {
             Bienvenido a Sentra Visión
           </h2>
           <p id="onboarding-instructions" className="vision-onboarding-text">
-            Toque el botón para activar la cámara. Doble toque en cualquier parte para activar o desactivar.
+            Usa el botón para activar la cámara. También puedes dar doble toque en el fondo para activar o desactivar.
           </p>
           <button
             className="vision-onboarding-btn"

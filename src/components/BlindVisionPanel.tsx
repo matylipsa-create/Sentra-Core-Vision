@@ -8,6 +8,7 @@ import { cognitiveLoadManager } from '../core/CognitiveLoadManager';
 import { hardwareAutoAdjust } from '../core/HardwareAutoAdjust';
 import { initOCR, recognizeText, terminateOCR } from '../services/OCREngine';
 import { evolis } from '../core/EVOLIS';
+import type { PerceptionData } from '../core/PerceptionEngine';
 
 const OBSTACLE_CLASSES = new Set([
   'person', 'bicycle', 'car', 'motorcycle', 'bus', 'train', 'truck', 'dog',
@@ -23,7 +24,10 @@ const LABELS_ES: Record<string, string> = {
 
 export interface BlindVisionPanelActions {
   toggleCamera: () => void;
+  setCamera: (active: boolean) => void;
   describeNow: () => void;
+  readText: () => void;
+  getPerception: () => PerceptionData | null;
 }
 
 function labelInSpanish(label: string): string {
@@ -99,7 +103,7 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
     setCameraActive(next);
     deviceManager.vibrate(80);
     voiceManager.speak(next ? 'Iniciando cámara y detección local.' : 'Cámara desactivada.', 2);
-  }, []);
+  }, [cameraActive]);
 
   const describeNow = useCallback(() => {
     if (!cameraActive) {
@@ -139,8 +143,6 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
     const centerX = (primary.bbox[0] + primary.bbox[2] / 2) / videoWidth;
     spatialAudioEngine.playSpatialBeep((centerX - 0.5) * 2, 10);
   }, [cameraActive, detections, loading]);
-
-  useImperativeHandle(ref, () => ({ toggleCamera, describeNow }), [describeNow, toggleCamera]);
 
   useEffect(() => {
     if (!cameraActive || detections.length === 0) return;
@@ -188,7 +190,10 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
 
   const handleReadText = useCallback(async () => {
     const video = videoRef.current;
-    if (!cameraActive || !video || video.readyState < 2 || isReadingText) return;
+    if (!cameraActive || !video || video.readyState < 2 || isReadingText) {
+      if (!cameraActive) voiceManager.speak('Primero activa la cámara para leer texto.', 3);
+      return;
+    }
     setIsReadingText(true);
     try {
       await initOCR();
@@ -208,6 +213,30 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
     }
   }, [cameraActive, isReadingText]);
 
+  const setCamera = useCallback((active: boolean) => {
+    if (active !== cameraActive) toggleCamera();
+  }, [cameraActive, toggleCamera]);
+
+  const getPerception = useCallback((): PerceptionData | null => {
+    if (detections.length === 0) return null;
+    const imageWidth = videoRef.current?.videoWidth || 640;
+    const imageHeight = videoRef.current?.videoHeight || 480;
+    return {
+      visionDetections: detections.map(({ class: label, score, bbox }) => ({ class: label, score, bbox })),
+      imageWidth,
+      imageHeight,
+      summary: detections.slice(0, 5).map((detection) => labelInSpanish(detection.class)).join(', '),
+    };
+  }, [detections]);
+
+  useImperativeHandle(ref, () => ({
+    toggleCamera,
+    setCamera,
+    describeNow,
+    readText: () => { void handleReadText(); },
+    getPerception,
+  }), [describeNow, getPerception, handleReadText, setCamera, toggleCamera]);
+
   useEffect(() => () => {
     void terminateOCR();
   }, []);
@@ -217,10 +246,10 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
       <div className="blind-vision-heading">
         <div>
           <h2 className="blind-panel-title">Sentra Visión</h2>
-          <p className="blind-panel-desc">Detección local. La cámara se activa solo cuando tú lo pides.</p>
+          <p className="blind-panel-desc">Inferencia en el dispositivo. La cámara se activa a demanda; el primer uso puede requerir Internet para descargar el modelo.</p>
         </div>
         <span className="blind-vision-status" role="status" aria-live="polite">
-          {!cameraActive ? 'Cámara apagada' : loading ? 'Cargando modelo' : cameraError || modelError ? 'Revisa permisos o modelo' : 'Visión activa'}
+          {!cameraActive ? 'Cámara apagada' : isReadingText ? 'Leyendo texto' : loading ? 'Cargando modelo' : cameraError || modelError ? 'Revisa permisos o modelo' : 'Visión activa'}
         </span>
       </div>
       <video
@@ -241,22 +270,6 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
           aria-pressed={cameraActive}
         >
           {cameraActive ? 'Detener cámara' : 'Activar cámara'}
-        </button>
-        <button
-          className="blind-action-btn blind-describe-btn"
-          onClick={describeNow}
-          disabled={!cameraActive}
-          aria-label="Describir lo que veo"
-        >
-          Describir entorno
-        </button>
-        <button
-          className="blind-action-btn"
-          onClick={() => void handleReadText()}
-          disabled={!cameraActive || isReadingText}
-          aria-label="Leer texto con la cámara"
-        >
-          {isReadingText ? 'Leyendo texto...' : 'Leer texto'}
         </button>
       </div>
 

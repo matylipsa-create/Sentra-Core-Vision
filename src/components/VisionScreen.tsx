@@ -607,8 +607,8 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
         </div>
       )}
 
-      <p className="vision-hint" aria-hidden="true">
-        Doble toque en pantalla para activar/desactivar
+      <p className="vision-hint" role="note">
+        Usa el botón Activar visión. También puedes dar doble toque en el fondo para activar o desactivar la cámara.
       </p>
 
       <video ref={videoRef} className="vision-hidden-video" aria-hidden="true" playsInline tabIndex={-1} />

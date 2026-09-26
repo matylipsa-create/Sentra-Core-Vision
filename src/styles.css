@@ -574,6 +574,12 @@ body {
 .blind-vision-controls { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .blind-action-btn { min-height: 56px; min-width: 56px; padding: 14px 24px; border-radius: var(--radius-sm); border: 2px solid var(--primary-dark); background: var(--bg-elevated); color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
 .blind-vision-actions .blind-action-btn { pointer-events: auto; }
+.blind-voice-entry { position: relative; z-index: 20; display: flex; justify-content: center; padding: 12px 16px; pointer-events: none; }
+.blind-voice-entry > * { pointer-events: auto; }
+.blind-advanced-tools { position: relative; z-index: 20; max-width: 1400px; margin: 12px auto; padding: 0 32px; color: var(--text); }
+.blind-advanced-tools summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; color: #c5c5d4; }
+.blind-advanced-tools a { display: inline-flex; align-items: center; min-height: 44px; color: #00ffcc; }
+.blind-advanced-content { padding-top: 8px; }
 .blind-action-btn:hover { border-color: var(--neon-focus); }
 .blind-action-btn:active { transform: scale(0.96); }
 .blind-action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -1006,7 +1012,7 @@ body {
 
 .vision-hint {
   font-size: 0.9rem;
-  color: #888;
+  color: #c5c5d4;
   margin-top: 1rem;
 }
 
@@ -1029,17 +1035,17 @@ body {
 
 .tts-rate-label {
   font-size: 0.8rem;
-  color: #888;
+  color: #c5c5d4;
 }
 
 .tts-rate-btn {
-  min-height: 36px;
-  min-width: 36px;
-  padding: 4px 12px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid #2a2a3e;
   background: #12121a;
-  color: #8888a0;
+  color: #c5c5d4;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;

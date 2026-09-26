@@ -39,35 +39,29 @@ export default function App() {
     );
   }
 
-  if (route === '/blind') {
+  if (route === '/vision') {
     return (
       <>
-        <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000] flex gap-2">
-          <button type="button" onClick={() => navigate('/core')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
-            SENTRA CORE
-          </button>
+        <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000]">
           <button type="button" onClick={() => navigate('/')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
-            VOLVER A VISIÓN
+            ASISTENTE ACCESIBLE
           </button>
         </nav>
-        <BlindModeRoute />
+        <AppProvider>
+          <VisionOnboarding><VisionScreen /></VisionOnboarding>
+        </AppProvider>
       </>
     );
   }
 
   return (
     <>
-      <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000] flex gap-2">
-        <button type="button" onClick={() => navigate('/blind')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
-          MODO ACCESIBLE
-        </button>
+      <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000]">
         <button type="button" onClick={() => navigate('/core')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
-          ABRIR SENTRA CORE
+          SENTRA CORE
         </button>
       </nav>
-      <AppProvider>
-        <VisionOnboarding><VisionScreen /></VisionOnboarding>
-      </AppProvider>
+      <AppProvider><BlindModeRoute /></AppProvider>
     </>
   );
 }

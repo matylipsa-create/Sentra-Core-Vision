@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { voiceManager } from '../services/VoiceManager';
 import { deviceManager } from '../core/DeviceManager';
 
 type OrbState = 'idle' | 'listening' | 'speaking' | 'disabled';
 
-export function VoiceOrbButton() {
+interface VoiceOrbButtonProps {
+  onCommand?: (command: string) => boolean;
+}
+
+export function VoiceOrbButton({ onCommand }: VoiceOrbButtonProps = {}) {
   const {
     voiceEnabled, isPassiveListening,
     togglePassiveListening, toggleVoice,
@@ -16,6 +20,10 @@ export function VoiceOrbButton() {
   const [oneShotListening, setOneShotListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastTapRef = useRef(0);
+  const dispatchCommand = useCallback((command: string) => {
+    if (onCommand?.(command)) return;
+    void processCommand(command);
+  }, [onCommand, processCommand]);
 
   useEffect(() => {
     const SRC =
@@ -28,7 +36,7 @@ export function VoiceOrbButton() {
       recognition.interimResults = false;
       recognition.onresult = (event: SpeechRecognitionEvent) => {
         const transcript = event.results[0][0].transcript;
-        processCommand(transcript);
+        dispatchCommand(transcript);
       };
       recognition.onend = () => {
         setOneShotListening(false);
@@ -40,13 +48,11 @@ export function VoiceOrbButton() {
       };
       recognitionRef.current = recognition;
     }
-  }, [processCommand, isPassiveListening]);
+  }, [dispatchCommand, isPassiveListening]);
 
   useEffect(() => {
     if (isPassiveListening) {
-      const ok = voiceManager.startPassiveListening((transcript) => {
-        processCommand(transcript);
-      });
+      const ok = voiceManager.startPassiveListening(dispatchCommand);
       if (!ok) {
         voiceManager.speak('Escucha pasiva no disponible en este dispositivo', 2);
         togglePassiveListening();
@@ -61,7 +67,7 @@ export function VoiceOrbButton() {
     return () => {
       voiceManager.stopPassiveListening();
     };
-  }, [isPassiveListening, processCommand, togglePassiveListening, oneShotListening]);
+  }, [isPassiveListening, dispatchCommand, togglePassiveListening, oneShotListening]);
 
   useEffect(() => {
     if (!voiceEnabled) {
