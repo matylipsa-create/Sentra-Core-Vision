@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { sentraEngine, type SystemMetrics } from '../core/SentraCoreEngine';
+import {
+  sentraEngine,
+  sentraExportSignedJSON,
+  sentraFullAwaken,
+  type SystemMetrics,
+} from '../core/SentraCoreEngine';
 
 const INITIAL_BARS = [40, 70, 45, 90, 60, 85, 30, 95, 50, 75];
 
@@ -9,6 +14,7 @@ export function SentraCoreDashboard() {
   const [isSystemActive, setIsSystemActive] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const addLog = useCallback((message: string) => {
     setLogs((current) => [`[${new Date().toLocaleTimeString()}] ${message}`, ...current].slice(0, 5));
@@ -19,9 +25,9 @@ export function SentraCoreDashboard() {
     setError(null);
     addLog('Inicializando núcleo offline-first...');
     try {
-      const initialized = await sentraEngine.initializeCore(videoRef.current ?? undefined);
+      const initialized = await sentraFullAwaken(videoRef.current ?? undefined);
       addLog(initialized
-        ? 'Hardware nativo vinculado con éxito.'
+        ? 'Secuencia completada; los sensores denegados usan respaldo.'
         : 'Modo híbrido activado (sensores virtuales de respaldo).');
       setIsSystemActive(true);
       sentraEngine.playAcousticPulse(587.33, 0.15);
@@ -63,6 +69,19 @@ export function SentraCoreDashboard() {
     addLog('Pulso acústico de prueba emitido a 440 Hz.');
   };
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      await sentraExportSignedJSON();
+      addLog('Telemetría exportada con firma simulada EVOLIS Chain.');
+    } catch (exportError) {
+      console.error('[SentraCoreDashboard] Error al exportar telemetría:', exportError);
+      setError('No se pudo exportar la telemetría.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const battery = metrics?.sensors.battery.level;
 
   return (
@@ -80,24 +99,34 @@ export function SentraCoreDashboard() {
               </p>
             </div>
           </div>
-          {!isSystemActive ? (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {!isSystemActive ? (
+              <button
+                type="button"
+                onClick={() => void handleActivateSystem()}
+                className="rounded border border-[#00ffcc] bg-[#00ffcc]/10 px-6 py-2 font-bold tracking-wider text-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.3)] transition-all hover:bg-[#00ffcc] hover:text-black"
+              >
+                INICIALIZAR NÚCLEO
+              </button>
+            ) : (
+              <div className="flex gap-2 text-xs">
+                <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">
+                  MODE: {metrics?.mode.toUpperCase() ?? 'HYBRID'}
+                </span>
+                <span className="rounded border border-emerald-800 bg-emerald-950/50 px-2 py-1 text-emerald-400">
+                  FPS: {metrics?.processingLoad.fps ?? 60}
+                </span>
+              </div>
+            )}
             <button
               type="button"
-              onClick={() => void handleActivateSystem()}
-              className="rounded border border-[#00ffcc] bg-[#00ffcc]/10 px-6 py-2 font-bold tracking-wider text-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.3)] transition-all hover:bg-[#00ffcc] hover:text-black"
+              onClick={() => void handleExport()}
+              disabled={isExporting}
+              className="rounded border border-emerald-700 bg-emerald-950/30 px-4 py-2 text-xs font-bold tracking-wider text-emerald-300 transition-colors hover:bg-emerald-900/60 disabled:cursor-wait disabled:opacity-50"
             >
-              INICIALIZAR NÚCLEO
+              {isExporting ? 'EXPORTANDO...' : 'EXPORTAR JSON FIRMADO'}
             </button>
-          ) : (
-            <div className="flex gap-2 text-xs">
-              <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">
-                MODE: {metrics?.mode.toUpperCase() ?? 'HYBRID'}
-              </span>
-              <span className="rounded border border-emerald-800 bg-emerald-950/50 px-2 py-1 text-emerald-400">
-                FPS: {metrics?.processingLoad.fps ?? 60}
-              </span>
-            </div>
-          )}
+          </div>
         </header>
 
         {error && <p className="rounded border border-red-500/50 bg-red-950/30 p-3 text-sm text-red-300" role="alert">{error}</p>}
@@ -123,6 +152,9 @@ export function SentraCoreDashboard() {
               <span>[ SENSORY_02: ACOUSTIC_RESONANCE ]</span>
               <span className={metrics?.sensors.audio.speakerReady ? 'text-emerald-400' : 'text-amber-500'}>
                 {metrics?.sensors.audio.speakerReady ? 'SYNTH_ACTIVE' : 'MUTED'}
+              </span>
+              <span className="text-cyan-400">
+                MIC RMS: {metrics?.sensors.audio.ambientLevel?.toFixed(3) ?? 'OFF'}
               </span>
             </div>
             <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded border border-zinc-900 bg-black/40 p-4">
