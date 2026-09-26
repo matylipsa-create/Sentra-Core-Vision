@@ -15,6 +15,7 @@ import { getHistory, getInclination } from '../core/DecisionHistory';
 import { listNodes, revertToNode } from '../core/InflectionNode';
 import { applySuggestion, getSuggestions, type Suggestion } from '../core/UserInclination';
 import { sentraEngine, type SystemMetrics } from '../core/SentraCoreEngine';
+import { sentraMaster } from '../core/SentraMasterEngine';
 
 const LABEL_ES: Record<string, string> = {
   person: 'persona',
@@ -225,7 +226,19 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
 
       const shouldThrottle = cognitiveLoadManager.shouldThrottle();
       if (!shouldThrottle && uiMode !== 'silent') {
-        speak(adapted);
+        sentraMaster.processFrame(
+          detections.map((detection) => ({
+            label: translateLabel(detection.class),
+            box: detection.bbox,
+          })),
+          videoWidth,
+          videoHeight,
+          {
+            detailLevel: uiMode === 'smooth' ? 'suave' : 'analitico',
+            speechRate: ttsRate,
+            speak,
+          },
+        );
       } else if (uiMode === 'silent') {
         console.log('[UI MODE] silent: sin TTS');
       } else {
