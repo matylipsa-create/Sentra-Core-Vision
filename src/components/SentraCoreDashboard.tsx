@@ -7,12 +7,20 @@ import {
 } from '../core/SentraCoreEngine';
 
 const INITIAL_BARS = [40, 70, 45, 90, 60, 85, 30, 95, 50, 75];
+const MAX_TELEMETRY_EVENTS = 25;
+
+type TelemetryEvent = {
+  timestamp: string;
+  event: string;
+  status: string;
+};
 
 export function SentraCoreDashboard() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [isSystemActive, setIsSystemActive] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
+  const [telemetryFifo, setTelemetryFifo] = useState<TelemetryEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -45,7 +53,14 @@ export function SentraCoreDashboard() {
     const refreshMetrics = async () => {
       try {
         const liveMetrics = await sentraEngine.fetchLiveMetrics();
-        if (!cancelled) setMetrics(liveMetrics);
+        if (!cancelled) {
+          setMetrics(liveMetrics);
+          setTelemetryFifo((current) => [{
+            timestamp: new Date().toISOString(),
+            event: `Telemetry Pulse (GPS: ${liveMetrics.sensors.gps.source})`,
+            status: 'NOMINAL',
+          }, ...current].slice(0, MAX_TELEMETRY_EVENTS));
+        }
       } catch (metricsError) {
         console.error('[SentraCoreDashboard] Error al leer telemetría:', metricsError);
         if (!cancelled) setError('No se pudo actualizar la telemetría.');
@@ -120,6 +135,20 @@ export function SentraCoreDashboard() {
             )}
             <button
               type="button"
+              onClick={() => window.alert('SENTRA CORE: Cerebro digital descentralizado, arquitectura air-gapped, procesamiento en borde y veto ético humano.')}
+              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 transition-colors hover:border-[#00ffcc] hover:text-[#00ffcc]"
+            >
+              FICHA DEL NÚCLEO
+            </button>
+            <button
+              type="button"
+              onClick={() => window.alert('IMPACTO AMBIENTAL: Optimización de recursos, reducción de consumo energético en nodos periféricos y eficiencia algorítmica.')}
+              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 transition-colors hover:border-[#00ffcc] hover:text-[#00ffcc]"
+            >
+              IMPACTO AMBIENTAL
+            </button>
+            <button
+              type="button"
               onClick={() => void handleExport()}
               disabled={isExporting}
               className="rounded border border-emerald-700 bg-emerald-950/30 px-4 py-2 text-xs font-bold tracking-wider text-emerald-300 transition-colors hover:bg-emerald-900/60 disabled:cursor-wait disabled:opacity-50"
@@ -179,8 +208,25 @@ export function SentraCoreDashboard() {
               <div className="flex justify-between"><span className="text-zinc-500">Orientación (Alpha):</span><span className="text-white">{metrics?.sensors.orientation.alpha?.toFixed(1) ?? '--'}°</span></div>
               <div className="flex justify-between"><span className="text-zinc-500">Batería Dispositivo:</span><span className="text-emerald-400">{battery === null || battery === undefined ? '--' : `${Math.round(battery * 100)}%`}</span></div>
             </div>
-            <div className="max-h-[100px] flex-1 overflow-y-auto rounded border border-zinc-900 bg-black/60 p-2 text-[10px] text-zinc-400">
-              {logs.length === 0 ? <span>Sin eventos registrados.</span> : logs.map((log) => <div key={log}>{log}</div>)}
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+              <div className="flex max-h-[150px] flex-col overflow-hidden rounded border border-zinc-900 bg-black/60 p-2 text-[10px] text-zinc-400">
+                <div className="mb-1 flex justify-between text-zinc-500">
+                  <span>[ TELEMETRY_FIFO ]</span>
+                  <span>{telemetryFifo.length}/{MAX_TELEMETRY_EVENTS}</span>
+                </div>
+                <div className="overflow-y-auto" aria-label="Flujo de telemetría">
+                  {telemetryFifo.length === 0 ? <span>Esperando telemetría...</span> : telemetryFifo.map((item) => (
+                    <div key={item.timestamp} className="flex gap-2 border-t border-zinc-900 py-1">
+                      <time className="shrink-0 text-zinc-500" dateTime={item.timestamp}>{new Date(item.timestamp).toLocaleTimeString()}</time>
+                      <span className="min-w-0 flex-1 truncate">{item.event}</span>
+                      <span className="shrink-0 text-emerald-400">{item.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="max-h-[64px] overflow-y-auto rounded border border-zinc-900 bg-black/60 p-2 text-[10px] text-zinc-400">
+                {logs.length === 0 ? <span>Sin acciones registradas.</span> : logs.map((log) => <div key={log}>{log}</div>)}
+              </div>
             </div>
           </section>
         </div>
