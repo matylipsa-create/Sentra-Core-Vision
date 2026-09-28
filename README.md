@@ -42,10 +42,9 @@ Sentra Core es un motor paraguas de decisión ética y computación soberana. La
 
 ### Q2 2027
 - **Tótem 2.0:** Primer prototipo de hardware autónomo (planos y esquemáticos listos).
-- **ZION:** ARPG con IA adaptativa e integración narrativa profunda.
 
 ### Q3 2027
-- **ZION Home:** Soluciones de domótica basadas en el motor de decisión.
+- **Domótica Home:** Soluciones de domótica basadas en el motor de decisión.
 - **RF Energy Harvesting:** Autonomía energética avanzada para nodos de campo.
 
 ### Q4 2027
