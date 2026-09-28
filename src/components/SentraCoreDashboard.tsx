@@ -6,7 +6,8 @@ import {
   type SystemMetrics,
 } from '../core/SentraCoreEngine';
 import { EngineStartButton } from './EngineStartButton';
-import { playEngineRoar } from '../lib/engineSound';
+import { playEngineRoar, playInterfaceCue } from '../lib/engineSound';
+import { ResilientTCREIBus, type BusSnapshot } from '../services/ResilientTCREIBus';
 
 const INITIAL_BARS = [40, 70, 45, 90, 60, 85, 30, 95, 50, 75];
 const MAX_TELEMETRY_EVENTS = 25;
@@ -17,14 +18,45 @@ type TelemetryEvent = {
   status: string;
 };
 
+type TrendSample = {
+  fps: number;
+  audio: number | null;
+  battery: number | null;
+  acceleration: number | null;
+};
+
+function Sparkline({ values, label }: { values: number[]; label: string }) {
+  const normalized = values.map((value) => Number.isFinite(value) ? value : 0);
+  const maximum = Math.max(1, ...normalized);
+  const minimum = Math.min(0, ...normalized);
+  const range = Math.max(maximum - minimum, 1);
+  const points = normalized.map((value, index) => {
+    const x = normalized.length < 2 ? 50 : (index / (normalized.length - 1)) * 100;
+    const y = 28 - ((value - minimum) / range) * 24;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <svg role="img" aria-label={`${label} trend`} viewBox="0 0 100 32" preserveAspectRatio="none" className="mt-2 h-8 w-full overflow-visible">
+      <polyline points={points} fill="none" stroke="var(--sentra-accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
 interface SentraCoreDashboardProps {
   onOpenVisionDemo?: () => void;
 }
 
 export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardProps = {}) {
+  const [bus] = useState(() => new ResilientTCREIBus());
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  const lastQueuedTelemetryRef = useRef(0);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  const [busSnapshot, setBusSnapshot] = useState<BusSnapshot>({
+    status: 'OFFLINE', rttMs: null, queuedCount: 0, message: 'Bus local sin conexión.',
+  });
+  const [trendSamples, setTrendSamples] = useState<TrendSample[]>([]);
   const [isSystemActive, setIsSystemActive] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [activeTab, setActiveTab] = useState<'specs' | 'environmental' | 'vision'>('specs');
@@ -32,6 +64,21 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
   const [telemetryFifo, setTelemetryFifo] = useState<TelemetryEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    const unsubscribeSnapshot = bus.subscribe(setBusSnapshot);
+    const unsubscribeEvents = bus.onEvent((name) => {
+      if (name.includes('alert') || name.includes('critical')) playInterfaceCue('critical');
+    });
+    const unsubscribeSensorAlerts = sentraEngine.onCriticalSensorAlert(() => playInterfaceCue('critical'));
+    bus.start();
+    return () => {
+      unsubscribeSnapshot();
+      unsubscribeEvents();
+      unsubscribeSensorAlerts();
+      bus.stop();
+    };
+  }, [bus]);
 
   useEffect(() => {
     if (isSystemActive) return undefined;
@@ -123,6 +170,8 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
     setError(null);
     addLog('Inicializando núcleo offline-first...');
     playEngineRoar();
+    void bus.enqueue('operator_action', { action: 'activate_core', requestedAt: Date.now() })
+      .catch((queueError: unknown) => console.error('[SentraCoreDashboard] No se pudo encolar la activación:', queueError));
     try {
       const initialized = await sentraFullAwaken(videoRef.current ?? undefined);
       const stream = videoRef.current?.srcObject;
@@ -138,7 +187,7 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
     } finally {
       setIsStarting(false);
     }
-  }, [addLog, isSystemActive]);
+  }, [addLog, bus, isSystemActive]);
 
   useEffect(() => {
     if (!isSystemActive) return undefined;
@@ -149,11 +198,36 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
         const liveMetrics = await sentraEngine.fetchLiveMetrics();
         if (!cancelled) {
           setMetrics(liveMetrics);
+          const acceleration = sentraEngine.getAccelerationSnapshot();
+          const accelerationMagnitude = acceleration.x === null || acceleration.y === null || acceleration.z === null
+            ? null
+            : Math.hypot(acceleration.x, acceleration.y, acceleration.z);
+          setTrendSamples((current) => [...current, {
+            fps: liveMetrics.processingLoad.fps,
+            audio: liveMetrics.sensors.audio.ambientLevel,
+            battery: liveMetrics.sensors.battery.level,
+            acceleration: accelerationMagnitude,
+          }].slice(-24));
           setTelemetryFifo((current) => [{
             timestamp: new Date().toISOString(),
             event: `Telemetry Pulse (GPS: ${liveMetrics.sensors.gps.source})`,
             status: 'NOMINAL',
           }, ...current].slice(0, MAX_TELEMETRY_EVENTS));
+          if (Date.now() - lastQueuedTelemetryRef.current >= 5000) {
+            lastQueuedTelemetryRef.current = Date.now();
+            void bus.enqueue('telemetry', {
+              timestamp: liveMetrics.timestamp,
+              mode: liveMetrics.mode,
+              gps: liveMetrics.sensors.gps,
+              battery: liveMetrics.sensors.battery,
+              orientation: liveMetrics.sensors.orientation,
+              audio: liveMetrics.sensors.audio,
+              processingLoad: liveMetrics.processingLoad,
+              acceleration,
+            }).catch((queueError: unknown) => {
+              console.error('[SentraCoreDashboard] No se pudo encolar telemetría:', queueError);
+            });
+          }
         }
       } catch (metricsError) {
         console.error('[SentraCoreDashboard] Error al leer telemetría:', metricsError);
@@ -167,7 +241,7 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [isSystemActive]);
+  }, [bus, isSystemActive]);
 
   useEffect(() => () => {
     sentraEngine.shutdownCore(videoRef.current ?? undefined);
@@ -183,6 +257,7 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
     try {
       await sentraExportSignedJSON();
       addLog('Telemetría exportada con firma simulada EVOLIS Chain.');
+      playInterfaceCue('confirm');
     } catch (exportError) {
       console.error('[SentraCoreDashboard] Error al exportar telemetría:', exportError);
       setError('No se pudo exportar la telemetría.');
@@ -192,6 +267,8 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
   };
 
   const handleLock = () => {
+    void bus.enqueue('operator_action', { action: 'lock_core', requestedAt: Date.now() })
+      .catch((queueError: unknown) => console.error('[SentraCoreDashboard] No se pudo encolar el bloqueo:', queueError));
     sentraEngine.shutdownCore(videoRef.current ?? undefined);
     cameraStreamRef.current = null;
     setMetrics(null);
@@ -226,6 +303,7 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
               type="button"
               onClick={() => void handleActivateSystem()}
               disabled={isStarting}
+              data-interface-sound="skip"
               className="flex min-h-14 w-full items-center justify-center gap-3 border border-[#78ffd3] bg-[#043527]/75 px-5 py-4 text-sm font-bold tracking-[0.18em] text-[#baffea] shadow-[0_0_24px_rgba(0,255,180,0.18)] transition hover:bg-[#00b881]/20 hover:shadow-[0_0_34px_rgba(0,255,180,0.35)] disabled:cursor-wait disabled:opacity-60"
             >
               <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full bg-[#00ffb4] ${isStarting ? 'animate-pulse' : 'animate-ping'}`} />
@@ -243,6 +321,7 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="border border-[#00ffb4]/25 px-3 py-2 text-[10px] text-[#8ddfc3]">{metrics?.processingLoad.fps ?? '--'} FPS</span>
+              <span className="border border-[#00ffb4]/25 px-3 py-2 text-[10px] text-[#8ddfc3]">{busSnapshot.status} · RTT {busSnapshot.rttMs === null ? '--' : `${busSnapshot.rttMs} ms`} · Q {busSnapshot.queuedCount}</span>
               <button type="button" onClick={() => void handleExport()} disabled={isExporting} className="min-h-10 border border-[#00ffb4]/35 px-3 py-2 text-[10px] font-bold tracking-wide text-[#baffea] transition hover:bg-[#00ffb4]/10 disabled:opacity-50">
                 {isExporting ? 'EXPORTANDO...' : 'EXPORTAR JSON'}
               </button>
@@ -269,10 +348,10 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
               <div className="space-y-5">
                 <h2 className="border-b border-[#00ffcc]/20 pb-2 text-xs font-bold tracking-[0.12em] text-[#baffea]">TELEMETRÍA DE HARDWARE & MOTOR</h2>
                 <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">Rendimiento</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.processingLoad.fps ?? '--'} FPS / {metrics?.processingLoad.inferenceTimeMs.toFixed(1) ?? '--'} ms</strong></div>
+                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">Rendimiento</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.processingLoad.fps ?? '--'} FPS / {metrics?.processingLoad.inferenceTimeMs.toFixed(1) ?? '--'} ms</strong><Sparkline label="FPS" values={trendSamples.map((sample) => sample.fps)} /></div>
                   <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">Núcleo</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.mode.toUpperCase() ?? 'HYBRID'}</strong></div>
-                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">GPS</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.sensors.gps.source.toUpperCase() ?? 'STANDBY'}</strong></div>
-                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">Audio</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.sensors.audio.speakerReady ? 'SYNTH ACTIVE' : 'MUTED'}</strong></div>
+                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">GPS</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.sensors.gps.source.toUpperCase() ?? 'STANDBY'}</strong><span className="mt-1 block text-[10px] text-[#629583]">± {metrics?.sensors.gps.accuracy?.toFixed(0) ?? '--'} m</span></div>
+                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">Audio / batería</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.sensors.audio.speakerReady ? 'SYNTH ACTIVE' : 'MUTED'} · {metrics?.sensors.battery.level == null ? '--' : `${Math.round(metrics.sensors.battery.level * 100)}%`}</strong><Sparkline label="Battery" values={trendSamples.flatMap((sample) => sample.battery === null ? [] : [sample.battery])} /></div>
                 </div>
                 <div className="grid gap-4 lg:grid-cols-2">
                   <section className="border border-[#00ffcc]/15 bg-black/25 p-4">
@@ -302,6 +381,10 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
                   <div className="flex flex-wrap justify-between gap-2 py-4"><span className="text-[#88b3a2]">Orientación (Alpha)</span><strong className="text-[#c0ffeb]">{metrics?.sensors.orientation.alpha?.toFixed(1) ?? '--'}°</strong></div>
                   <div className="flex flex-wrap justify-between gap-2 py-4"><span className="text-[#88b3a2]">Batería del dispositivo</span><strong className="text-[#c0ffeb]">{battery == null ? 'No disponible' : `${Math.round(battery * 100)}%`}</strong></div>
                   <div className="flex flex-wrap justify-between gap-2 py-4"><span className="text-[#88b3a2]">Nivel de audio ambiental</span><strong className="text-[#c0ffeb]">{metrics?.sensors.audio.ambientLevel?.toFixed(3) ?? 'No disponible'}</strong></div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="border border-[#00ffcc]/15 bg-black/25 p-4"><h3 className="text-[10px] text-[#88b3a2]">AUDIO AMBIENTAL</h3><Sparkline label="Ambient audio" values={trendSamples.flatMap((sample) => sample.audio === null ? [] : [sample.audio])} /></div>
+                  <div className="border border-[#00ffcc]/15 bg-black/25 p-4"><h3 className="text-[10px] text-[#88b3a2]">ACELERÓMETRO · MAGNITUD</h3><strong className="mt-1 block text-sm text-[#c0ffeb]">{trendSamples.at(-1)?.acceleration?.toFixed(2) ?? 'No disponible'} m/s²</strong><Sparkline label="Acceleration" values={trendSamples.flatMap((sample) => sample.acceleration === null ? [] : [sample.acceleration])} /></div>
                 </div>
                 <p className="text-[10px] leading-relaxed text-[#638f80]">Los valores dependen de los permisos y sensores disponibles en este dispositivo. Los sensores sin lectura aparecen como no disponibles.</p>
               </div>

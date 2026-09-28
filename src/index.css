@@ -2,6 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --sentra-accent: #00ffcc;
+  --sentra-text: #d5e8df;
+}
+
+html[data-sentra-theme="cyberpunk"] {
+  --sentra-accent: #35baff;
+  --sentra-text: #e1f4ff;
+  --primary: #168bff;
+  --primary-dark: #0063b8;
+  --primary-light: #82d5ff;
+  --accent: #34e8ff;
+  --neon-focus: #53caff;
+}
+
+html[data-sentra-theme="field"] {
+  --sentra-accent: #ffec3d;
+  --sentra-text: #ffffff;
+  --primary: #ffec3d;
+  --primary-dark: #c4a900;
+  --primary-light: #fff47c;
+  --accent: #ffffff;
+  --neon-focus: #ffec3d;
+  --text-dim: #d0d0d0;
+}
+
+html[data-sentra-theme="cyberpunk"] [class*="text-[#00ffcc]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#00ffb4]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#00c995]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#00d4a0]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#48ba98]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#62a78f]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#76ad99]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#83e2bd]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#8ddfc3]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#9fffd9]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#aaffdf]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#afffe5]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#b7ffe9]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#baffea]"],
+html[data-sentra-theme="cyberpunk"] [class*="text-[#c0ffeb]"],
+html[data-sentra-theme="field"] [class*="text-[#00ffcc]"],
+html[data-sentra-theme="field"] [class*="text-[#00ffb4]"],
+html[data-sentra-theme="field"] [class*="text-[#00c995]"],
+html[data-sentra-theme="field"] [class*="text-[#00d4a0]"],
+html[data-sentra-theme="field"] [class*="text-[#48ba98]"],
+html[data-sentra-theme="field"] [class*="text-[#62a78f]"],
+html[data-sentra-theme="field"] [class*="text-[#76ad99]"],
+html[data-sentra-theme="field"] [class*="text-[#83e2bd]"],
+html[data-sentra-theme="field"] [class*="text-[#8ddfc3]"],
+html[data-sentra-theme="field"] [class*="text-[#9fffd9]"],
+html[data-sentra-theme="field"] [class*="text-[#aaffdf]"],
+html[data-sentra-theme="field"] [class*="text-[#afffe5]"],
+html[data-sentra-theme="field"] [class*="text-[#b7ffe9]"],
+html[data-sentra-theme="field"] [class*="text-[#baffea]"],
+html[data-sentra-theme="field"] [class*="text-[#c0ffeb]"] {
+  color: var(--sentra-accent) !important;
+}
+
+html[data-sentra-theme="cyberpunk"] [class*="border-[#00ffcc]"],
+html[data-sentra-theme="cyberpunk"] [class*="border-[#00ffb4]"],
+html[data-sentra-theme="cyberpunk"] [class*="border-[#00d4a0]"],
+html[data-sentra-theme="cyberpunk"] [class*="border-[#78ffd3]"],
+html[data-sentra-theme="field"] [class*="border-[#00ffcc]"],
+html[data-sentra-theme="field"] [class*="border-[#00ffb4]"],
+html[data-sentra-theme="field"] [class*="border-[#00d4a0]"],
+html[data-sentra-theme="field"] [class*="border-[#78ffd3]"] {
+  border-color: color-mix(in srgb, var(--sentra-accent) 50%, transparent) !important;
+}
+
+:root[data-sentra-theme="field"] button,
+:root[data-sentra-theme="field"] select,
+:root[data-sentra-theme="field"] input {
+  outline-color: var(--sentra-accent);
+}
+
 * { box-sizing: border-box; }
 
 html, body, #root { min-height: 100%; width: 100%; }
@@ -16,4 +92,4 @@ body {
 
 button { font: inherit; }
 
-button:focus-visible { outline: 3px solid #00ffcc; outline-offset: 3px; }
+button:focus-visible { outline: 3px solid var(--sentra-accent); outline-offset: 3px; }

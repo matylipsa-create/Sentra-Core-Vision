@@ -6,3 +6,5 @@ vite.config.ts.timestamp-*.mjs
 .vite/
 build/
 *.log
+server/data/
+server/server/data/

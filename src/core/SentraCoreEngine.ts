@@ -78,6 +78,7 @@ export class SentraCoreEngine {
   private motionListener: ((event: DeviceMotionEvent) => void) | null = null;
   private stopHardwareTelemetry: (() => void) | null = null;
   private lastMotionAlertAt = 0;
+  private criticalSensorListeners = new Set<(message: string) => void>();
   private lastAcceleration = { x: null as number | null, y: null as number | null, z: null as number | null };
   private simulatedState = {
     lat: -38.0055,
@@ -143,6 +144,11 @@ export class SentraCoreEngine {
       queueSize: this.queue.size(),
       timestamp: Date.now(),
     };
+  }
+
+  onCriticalSensorAlert(listener: (message: string) => void): () => void {
+    this.criticalSensorListeners.add(listener);
+    return () => this.criticalSensorListeners.delete(listener);
   }
 
   getAccelerationSnapshot() {
@@ -393,6 +399,7 @@ export class SentraCoreEngine {
           if (highAcceleration && now - this.lastMotionAlertAt > 2000) {
             this.lastMotionAlertAt = now;
             console.warn('[SentraCore] Movimiento de alta aceleración detectado.');
+            for (const listener of this.criticalSensorListeners) listener('high_acceleration');
             try {
               if ('vibrate' in navigator) navigator.vibrate(300);
             } catch (error) {

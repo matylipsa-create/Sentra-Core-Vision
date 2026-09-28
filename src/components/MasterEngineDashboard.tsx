@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { evolis } from '../core/EVOLIS';
 import { storageService } from '../services/StorageService';
 import { initOCR, recognizeText, terminateOCR } from '../services/OCREngine';
+import { ResilientTCREIBus } from '../services/ResilientTCREIBus';
+import { downloadAuditReport, type AuditFormat } from '../services/AuditReportExporter';
+import { playInterfaceCue } from '../lib/engineSound';
 
 type ConnectionStatus = 'ONLINE' | 'OFFLINE' | 'RECONNECTING';
 type PriorityEvent = { type: string; text: string };
@@ -54,114 +57,50 @@ class SentraPriorityQueue {
   }
 }
 
-function getBusUrl(): string {
-  if (import.meta.env.VITE_SENTRA_WS_URL) return import.meta.env.VITE_SENTRA_WS_URL;
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return 'ws://localhost:8080';
-  }
-  return '';
-}
-
-function createMessageId(): string {
-  return window.crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 export function MasterEngineDashboard() {
+  const [bus] = useState(() => new ResilientTCREIBus());
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraRequestRef = useRef(0);
+  const lastQueuedOcrRef = useRef('');
   const queueRef = useRef(new SentraPriorityQueue());
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('OFFLINE');
   const [busMessage, setBusMessage] = useState('Bus local sin conexión.');
+  const [rttMs, setRttMs] = useState<number | null>(null);
+  const [outboxCount, setOutboxCount] = useState(0);
   const [activeTelemetry, setActiveTelemetry] = useState('Esperando flujo de sensores...');
   const [ocrText, setOcrText] = useState('Sin texto detectado');
   const [isStarting, setIsStarting] = useState(false);
   const [isVisionActive, setIsVisionActive] = useState(false);
   const [snapshotStatus, setSnapshotStatus] = useState('');
+  const [auditStatus, setAuditStatus] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const url = getBusUrl();
-    if (!url) {
-      setBusMessage('Configura VITE_SENTRA_WS_URL para conectar el bus remoto.');
-      return undefined;
-    }
-
-    let stopped = false;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | undefined;
-    let retryDelay = 1000;
-
-    const connect = () => {
-      if (stopped) return;
-      setConnectionStatus('RECONNECTING');
-      try {
-        socket = new WebSocket(url);
-      } catch {
-        setConnectionStatus('OFFLINE');
-        reconnectTimer = window.setTimeout(() => {
-          retryDelay = Math.min(retryDelay * 2, 30000);
-          connect();
-        }, retryDelay);
-        return;
+    const unsubscribeSnapshot = bus.subscribe((snapshot) => {
+      setConnectionStatus(snapshot.status);
+      setBusMessage(snapshot.message);
+      setRttMs(snapshot.rttMs);
+      setOutboxCount(snapshot.queuedCount);
+    });
+    const unsubscribeEvents = bus.onEvent((name, data) => {
+      const item = { type: 'BUS_EVENT', text: name };
+      queueRef.current.enqueue(item, 5);
+      const next = queueRef.current.dequeue();
+      if (next) setActiveTelemetry(`Bus: ${next.text}`);
+      if (name.includes('alert') || name.includes('critical')) {
+        console.warn('[MasterEngineDashboard] Alerta crítica del bus:', data);
+        playInterfaceCue('critical');
       }
-
-      const currentSocket = socket;
-      currentSocket.onopen = () => {
-        if (stopped) return;
-        retryDelay = 1000;
-        setConnectionStatus('ONLINE');
-        setBusMessage(`Conectado a ${url}`);
-        currentSocket.send(JSON.stringify({
-          type: 'query',
-          module: 'system',
-          action: 'get_status',
-          payload: {},
-          timestamp: Date.now(),
-          id: createMessageId(),
-        }));
-      };
-      currentSocket.onmessage = (event) => {
-        if (stopped) return;
-        try {
-          const message = JSON.parse(String(event.data)) as {
-            type?: string;
-            event?: string;
-            data?: unknown;
-            ok?: boolean;
-            error?: string;
-          };
-          if (message.type === 'response') {
-            setBusMessage(message.ok ? 'Estado del bus actualizado.' : message.error ?? 'Error al consultar el bus.');
-          } else if (message.type === 'event' && message.event) {
-            const item = { type: 'BUS_EVENT', text: message.event };
-            queueRef.current.enqueue(item, 5);
-            const next = queueRef.current.dequeue();
-            if (next) setActiveTelemetry(`Bus: ${next.text}`);
-          }
-        } catch {
-          setBusMessage('Se recibió un mensaje de bus no válido.');
-        }
-      };
-      currentSocket.onclose = () => {
-        if (stopped) return;
-        setConnectionStatus('RECONNECTING');
-        setBusMessage('Bus desconectado; reintentando conexión.');
-        reconnectTimer = window.setTimeout(() => {
-          retryDelay = Math.min(retryDelay * 2, 30000);
-          connect();
-        }, retryDelay);
-      };
-      currentSocket.onerror = () => currentSocket.close();
-    };
-
-    connect();
+    });
+    bus.start();
     return () => {
-      stopped = true;
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
-      socket?.close();
+      unsubscribeSnapshot();
+      unsubscribeEvents();
+      bus.stop();
     };
-  }, []);
+  }, [bus]);
 
   useEffect(() => {
     if (!isVisionActive) return undefined;
@@ -177,6 +116,11 @@ export function MasterEngineDashboard() {
         queueRef.current.enqueue({ type: 'OCR_SCAN', text: result }, text ? 1 : 8);
         const next = queueRef.current.dequeue();
         if (next) setActiveTelemetry(`Procesado: ${next.type} -> ${next.text}`);
+        if (text && text !== lastQueuedOcrRef.current) {
+          lastQueuedOcrRef.current = text;
+          void bus.enqueue('telemetry', { source: 'ocr', text, capturedAt: Date.now() })
+            .catch((queueError: unknown) => console.error('[MasterEngineDashboard] No se pudo encolar OCR:', queueError));
+        }
       } catch (ocrError) {
         console.error('[MasterEngineDashboard] Error de OCR:', ocrError);
         setError('No se pudo procesar el texto de la cámara.');
@@ -185,7 +129,7 @@ export function MasterEngineDashboard() {
       }
     }, 2500);
     return () => window.clearInterval(interval);
-  }, [isVisionActive]);
+  }, [bus, isVisionActive]);
 
   useEffect(() => () => {
     cameraRequestRef.current += 1;
@@ -254,14 +198,33 @@ export function MasterEngineDashboard() {
     try {
       const evidence = await evolis.record('master_engine', 'secure_snapshot', JSON.stringify(snapshot));
       await storageService.saveEvidence(evidence);
+      await bus.enqueue('operator_action', { action: 'secure_snapshot', evidenceId: evidence.id, snapshot });
       if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
+      playInterfaceCue('confirm');
       setSnapshotStatus(`Guardado y firmado en EVOLIS · ${evidence.entry.hash.slice(0, 16)}...`);
     } catch (saveError) {
       console.error('[MasterEngineDashboard] Error guardando snapshot:', saveError);
       setSnapshotStatus('');
       setError('No se pudo guardar la instantánea firmada.');
     }
-  }, [activeTelemetry, connectionStatus, ocrText]);
+  }, [activeTelemetry, bus, connectionStatus, ocrText]);
+
+  const handleAuditExport = useCallback(async (format: AuditFormat) => {
+    setIsExporting(true);
+    setError('');
+    setAuditStatus('Preparando reporte EVOLIS...');
+    try {
+      const count = await downloadAuditReport(format);
+      setAuditStatus(`Reporte ${format.toUpperCase()} exportado · ${count} registros firmados.`);
+      playInterfaceCue('confirm');
+    } catch (exportError) {
+      console.error('[MasterEngineDashboard] Error exportando reporte:', exportError);
+      setAuditStatus('');
+      setError('No se pudo exportar el reporte EVOLIS.');
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 bg-[#07100e] px-4 pb-6 pt-16 font-mono text-[#d5e8df] sm:px-6 sm:py-6">
@@ -270,8 +233,10 @@ export function MasterEngineDashboard() {
           <p className="text-[10px] uppercase tracking-[0.18em] text-[#76ad99]">Edge node & vision pipeline v3.2</p>
           <h1 className="mt-1 text-lg font-bold tracking-[0.08em] text-[#9fffd9]">SENTRA MASTER ENGINE</h1>
         </div>
-        <div className={`border px-3 py-2 text-[10px] font-bold tracking-wider ${connectionStatus === 'ONLINE' ? 'border-emerald-500/50 bg-emerald-950/50 text-emerald-300' : connectionStatus === 'RECONNECTING' ? 'border-amber-500/50 bg-amber-950/50 text-amber-200' : 'border-rose-500/40 bg-rose-950/30 text-rose-200'}`} role="status" aria-live="polite">
-          {connectionStatus}
+        <div className="flex flex-wrap items-center gap-2 text-[10px]">
+          <span className={`border px-3 py-2 font-bold tracking-wider ${connectionStatus === 'ONLINE' ? 'border-emerald-500/50 bg-emerald-950/50 text-emerald-300' : connectionStatus === 'RECONNECTING' ? 'border-amber-500/50 bg-amber-950/50 text-amber-200' : 'border-rose-500/40 bg-rose-950/30 text-rose-200'}`} role="status" aria-live="polite">{connectionStatus}</span>
+          <span className="border border-[#00d4a0]/20 px-3 py-2 text-[#aaffdf]">RTT {rttMs === null ? '--' : `${rttMs} ms`}</span>
+          <span className="border border-[#00d4a0]/20 px-3 py-2 text-[#aaffdf]">OUTBOX {outboxCount}</span>
         </div>
       </header>
 
@@ -306,6 +271,11 @@ export function MasterEngineDashboard() {
               FIRMAR Y GUARDAR SNAPSHOT
             </button>
             {snapshotStatus && <p className="mt-3 break-all text-[10px] text-[#8de0b8]" role="status" aria-live="polite">{snapshotStatus}</p>}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => void handleAuditExport('json')} disabled={isExporting} className="min-h-10 border border-[#00d4a0]/30 px-2 py-2 text-[10px] text-[#aaffdf] transition hover:bg-[#00d4a0]/10 disabled:opacity-50">AUDITORÍA JSON</button>
+              <button type="button" onClick={() => void handleAuditExport('csv')} disabled={isExporting} className="min-h-10 border border-[#00d4a0]/30 px-2 py-2 text-[10px] text-[#aaffdf] transition hover:bg-[#00d4a0]/10 disabled:opacity-50">AUDITORÍA CSV</button>
+            </div>
+            {auditStatus && <p className="mt-2 text-[10px] text-[#8de0b8]" role="status" aria-live="polite">{auditStatus}</p>}
           </div>
         </div>
       </section>

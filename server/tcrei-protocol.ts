@@ -14,7 +14,8 @@ export type TCREIAction =
   | 'get_usb_devices' | 'block_port' | 'unblock_port'
   | 'authenticate_device' | 'deploy_bacteria' | 'vaccinate_port'
   | 'get_sync_status' | 'set_sync_transport'
-  | 'connect_bluetooth' | 'disconnect_bluetooth';
+  | 'connect_bluetooth' | 'disconnect_bluetooth'
+  | 'telemetry' | 'operator_action';
 
 export interface TCREIMessage {
   type: TCREIMessageType;

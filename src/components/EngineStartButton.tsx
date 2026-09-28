@@ -24,6 +24,7 @@ export function EngineStartButton() {
         type="button"
         onClick={handleStart}
         disabled={isRunning}
+        data-interface-sound="skip"
         aria-label={isRunning ? 'Motor en marcha' : 'Encender motor'}
         className={`relative rounded-full border-2 px-8 py-3 font-mono text-sm font-bold tracking-[0.2em] transition-all duration-300 ${
           isRunning

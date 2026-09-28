@@ -1,4 +1,23 @@
 let sharedContext: AudioContext | null = null;
+const INTERFACE_AUDIO_KEY = 'sentra-interface-audio';
+
+export type InterfaceCue = 'click' | 'confirm' | 'critical';
+
+export function isInterfaceAudioEnabled(): boolean {
+  try {
+    return window.localStorage.getItem(INTERFACE_AUDIO_KEY) === 'enabled';
+  } catch {
+    return false;
+  }
+}
+
+export function setInterfaceAudioEnabled(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(INTERFACE_AUDIO_KEY, enabled ? 'enabled' : 'disabled');
+  } catch (error) {
+    console.warn('[engineSound] No se pudo guardar la preferencia de audio:', error);
+  }
+}
 
 function getContext(): AudioContext {
   const AudioContextClass = window.AudioContext
@@ -86,5 +105,32 @@ export function playEngineRoar(): number {
   } catch (error) {
     console.error('[engineSound] No se pudo sintetizar el rugido del motor:', error);
     return 0;
+  }
+}
+
+export function playInterfaceCue(cue: InterfaceCue): void {
+  if (!isInterfaceAudioEnabled()) return;
+  try {
+    const ctx = getContext();
+    const now = ctx.currentTime;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const tone = cue === 'critical'
+      ? { start: 260, end: 180, duration: 0.22, volume: 0.055, type: 'triangle' as OscillatorType }
+      : cue === 'confirm'
+        ? { start: 640, end: 960, duration: 0.11, volume: 0.035, type: 'sine' as OscillatorType }
+        : { start: 720, end: 520, duration: 0.035, volume: 0.018, type: 'sine' as OscillatorType };
+
+    oscillator.type = tone.type;
+    oscillator.frequency.setValueAtTime(tone.start, now);
+    oscillator.frequency.exponentialRampToValueAtTime(tone.end, now + tone.duration);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(tone.volume, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + tone.duration);
+    oscillator.connect(gain).connect(ctx.destination);
+    oscillator.start(now);
+    oscillator.stop(now + tone.duration);
+  } catch (error) {
+    console.warn('[engineSound] No se pudo reproducir el efecto de interfaz:', error);
   }
 }

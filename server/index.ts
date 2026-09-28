@@ -16,6 +16,7 @@ import { usbService } from '../src/services/USBService.js';
 import { PowerMode } from '../src/core/PowerManager.js';
 import { syncManager, SyncTransport } from '../src/core/SyncManager.js';
 import { storageService } from '../src/services/StorageService.js';
+import { EvidenceJournal } from './EvidenceJournal.js';
 
 const PORT = parseInt(process.env.SENTRA_PORT ?? '8080', 10);
 
@@ -42,6 +43,10 @@ const state: ServerState = {
   worldEnabled: false,
   bioEnabled: false,
 };
+
+const evidenceJournal = new EvidenceJournal();
+const persistedEvidence = await evidenceJournal.load();
+if (persistedEvidence.length > 0) evolis.importState(persistedEvidence);
 
 // ─── Init ───────────────────────────────────────────────
 
@@ -76,6 +81,24 @@ const handlers: Record<string, Handler> = {
     await storageService.saveEvidence(evidence);
     broadcast(makeEvent('evidence.recorded', { id: evidence.id, index: evidence.entry.index }));
     return { allowed: true, response };
+  },
+
+  'command:telemetry': async (msg) => {
+    const serialized = JSON.stringify(msg.payload);
+    if (serialized.length > 32000) throw new Error('Telemetry payload exceeds limit');
+    const evidence = await evolis.record('telemetry', 'sensor_snapshot', serialized);
+    await evidenceJournal.append(evidence);
+    broadcast(makeEvent('evidence.recorded', { id: evidence.id, index: evidence.entry.index }));
+    return { accepted: true, evidenceId: evidence.id, hash: evidence.entry.hash };
+  },
+
+  'command:operator_action': async (msg) => {
+    const serialized = JSON.stringify(msg.payload);
+    if (serialized.length > 32000) throw new Error('Operator action payload exceeds limit');
+    const evidence = await evolis.record('operator', 'critical_action', serialized);
+    await evidenceJournal.append(evidence);
+    broadcast(makeEvent('evidence.recorded', { id: evidence.id, index: evidence.entry.index }));
+    return { accepted: true, evidenceId: evidence.id, hash: evidence.entry.hash };
   },
 
   'query:get_status': async () => ({
