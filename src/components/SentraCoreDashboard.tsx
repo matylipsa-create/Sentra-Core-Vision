@@ -6,6 +6,7 @@ import {
   type SystemMetrics,
 } from '../core/SentraCoreEngine';
 import { EngineStartButton } from './EngineStartButton';
+import { playEngineRoar } from '../lib/engineSound';
 
 const INITIAL_BARS = [40, 70, 45, 90, 60, 85, 30, 95, 50, 75];
 const MAX_TELEMETRY_EVENTS = 25;
@@ -22,32 +23,120 @@ interface SentraCoreDashboardProps {
 
 export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardProps = {}) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [isSystemActive, setIsSystemActive] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'specs' | 'environmental' | 'vision'>('specs');
   const [logs, setLogs] = useState<string[]>([]);
   const [telemetryFifo, setTelemetryFifo] = useState<TelemetryEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    if (isSystemActive) return undefined;
+    const canvas = document.querySelector<HTMLCanvasElement>('[data-sentra-network]');
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return undefined;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const nodes = Array.from({ length: 42 }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.45,
+      vy: (Math.random() - 0.5) * 0.45,
+    }));
+    let animationFrame = 0;
+
+    const resize = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * pixelRatio;
+      canvas.height = height * pixelRatio;
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    };
+
+    const render = () => {
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = 'rgba(0, 255, 180, 0.55)';
+      context.strokeStyle = 'rgba(0, 255, 180, 0.13)';
+
+      nodes.forEach((node, index) => {
+        if (!reducedMotion) {
+          node.x += node.vx;
+          node.y += node.vy;
+          if (node.x < 0 || node.x > width) node.vx *= -1;
+          if (node.y < 0 || node.y > height) node.vy *= -1;
+        }
+
+        context.beginPath();
+        context.arc(node.x, node.y, 1.6, 0, Math.PI * 2);
+        context.fill();
+        for (let next = index + 1; next < nodes.length; next += 1) {
+          const other = nodes[next];
+          const distance = Math.hypot(node.x - other.x, node.y - other.y);
+          if (distance < 130) {
+            context.globalAlpha = 1 - distance / 130;
+            context.beginPath();
+            context.moveTo(node.x, node.y);
+            context.lineTo(other.x, other.y);
+            context.stroke();
+          }
+        }
+      });
+      context.globalAlpha = 1;
+      if (!reducedMotion) animationFrame = window.requestAnimationFrame(render);
+    };
+
+    resize();
+    render();
+    window.addEventListener('resize', resize);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener('resize', resize);
+    };
+  }, [isSystemActive]);
+
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    const cameraStream = cameraStreamRef.current;
+    if (!isSystemActive || activeTab !== 'vision' || !videoElement || !cameraStream) return;
+    videoElement.srcObject = cameraStream;
+    void videoElement.play().catch((playError: unknown) => {
+      console.warn('[SentraCoreDashboard] No se pudo mostrar la vista de cámara:', playError);
+    });
+  }, [activeTab, isSystemActive]);
 
   const addLog = useCallback((message: string) => {
     setLogs((current) => [`[${new Date().toLocaleTimeString()}] ${message}`, ...current].slice(0, 5));
   }, []);
 
   const handleActivateSystem = useCallback(async () => {
-    if (isSystemActive) return;
+    if (isSystemActive) {
+      setIsStarting(false);
+      return;
+    }
+    setIsStarting(true);
     setError(null);
     addLog('Inicializando núcleo offline-first...');
+    playEngineRoar();
     try {
       const initialized = await sentraFullAwaken(videoRef.current ?? undefined);
+      const stream = videoRef.current?.srcObject;
+      cameraStreamRef.current = stream instanceof MediaStream ? stream : null;
       addLog(initialized
         ? 'Secuencia completada; los sensores denegados usan respaldo.'
         : 'Modo híbrido activado (sensores virtuales de respaldo).');
       setIsSystemActive(true);
-      sentraEngine.playAcousticPulse(587.33, 0.15);
     } catch (activationError) {
       console.error('[SentraCoreDashboard] Error al inicializar el núcleo:', activationError);
       setError('No se pudo inicializar el núcleo.');
       addLog('Error al inicializar el núcleo.');
+    } finally {
+      setIsStarting(false);
     }
   }, [addLog, isSystemActive]);
 
@@ -102,158 +191,139 @@ export function SentraCoreDashboard({ onOpenVisionDemo }: SentraCoreDashboardPro
     }
   };
 
+  const handleLock = () => {
+    sentraEngine.shutdownCore(videoRef.current ?? undefined);
+    cameraStreamRef.current = null;
+    setMetrics(null);
+    setTelemetryFifo([]);
+    setIsSystemActive(false);
+    setActiveTab('specs');
+  };
+
   const battery = metrics?.sensors.battery.level;
 
   return (
-    <main className="min-h-screen bg-[#050507] p-4 font-mono text-[#00ffcc] select-none">
-      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl flex-col gap-4">
-        <header className="flex flex-col items-center justify-between gap-3 rounded-lg border border-[#00ffcc]/30 bg-[#0a0a0f]/80 p-4 shadow-[0_0_15px_rgba(0,255,204,0.1)] backdrop-blur-md md:flex-row">
-          <div className="flex items-center gap-3">
-            <div className="h-3 w-3 animate-pulse rounded-full bg-[#00ffcc]" />
-            <div>
-              <h1 className="text-lg font-bold tracking-widest text-white">
-                SENTRA CORE // <span className="text-[#00ffcc]">EDGE MGP</span>
-              </h1>
-              <p className="text-xs text-zinc-500">
-                SYS_STATUS: {isSystemActive ? 'ONLINE - AIR-GAPPED' : 'STANDBY'}
-              </p>
-            </div>
+    <main className="relative min-h-screen overflow-hidden bg-[#05090a] p-4 font-mono text-[#00ffcc] sm:p-6">
+      {!isSystemActive ? (
+        <section className="relative flex min-h-[calc(100vh-2rem)] flex-col items-center justify-between overflow-hidden border border-[#00ffcc]/10 bg-[#030708] px-5 py-12 sm:min-h-[calc(100vh-3rem)] sm:px-10">
+          <video ref={videoRef} autoPlay playsInline muted aria-hidden="true" className="pointer-events-none absolute h-px w-px opacity-0" />
+          <canvas data-sentra-network aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(0,255,180,0.08)_0%,_transparent_58%)]" />
+          <header className="relative z-10 mt-4 text-center sm:mt-8">
+            <p className="mb-3 text-[10px] uppercase tracking-[0.28em] text-[#00c995] sm:text-xs">Secure system bootstrap</p>
+            <h1 className="text-4xl font-black tracking-[0.12em] text-[#b7ffe9] drop-shadow-[0_0_16px_rgba(0,255,180,0.35)] sm:text-6xl">SENTRA CORE</h1>
+            <div className="mx-auto mt-5 h-px w-28 bg-[#00ffb4] shadow-[0_0_14px_rgba(0,255,180,0.7)]" />
+          </header>
+
+          <div className="relative z-10 my-12 w-full max-w-md border border-[#00ffb4]/30 bg-[#03150f]/70 p-5 text-center shadow-[0_0_28px_rgba(0,255,180,0.08)] backdrop-blur-sm">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-[#7acbb0]">Estado del núcleo</p>
+            <p className="mt-2 text-xs font-bold tracking-[0.12em] text-[#afffe5] sm:text-sm">{isStarting ? 'INICIALIZANDO // ESPERA' : 'STANDBY // READY FOR IGNITION'}</p>
+            {error && <p className="mt-4 text-xs text-red-300" role="alert">{error}</p>}
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {!isSystemActive ? (
-              <button
-                type="button"
-                onClick={() => void handleActivateSystem()}
-                className="rounded border border-[#00ffcc] bg-[#00ffcc]/10 px-6 py-2 font-bold tracking-wider text-[#00ffcc] shadow-[0_0_10px_rgba(0,255,204,0.3)] transition-all hover:bg-[#00ffcc] hover:text-black"
-              >
-                INICIALIZAR NÚCLEO
+
+          <div className="relative z-10 mb-2 w-full max-w-xs text-center">
+            <button
+              type="button"
+              onClick={() => void handleActivateSystem()}
+              disabled={isStarting}
+              className="flex min-h-14 w-full items-center justify-center gap-3 border border-[#78ffd3] bg-[#043527]/75 px-5 py-4 text-sm font-bold tracking-[0.18em] text-[#baffea] shadow-[0_0_24px_rgba(0,255,180,0.18)] transition hover:bg-[#00b881]/20 hover:shadow-[0_0_34px_rgba(0,255,180,0.35)] disabled:cursor-wait disabled:opacity-60"
+            >
+              <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full bg-[#00ffb4] ${isStarting ? 'animate-pulse' : 'animate-ping'}`} />
+              {isStarting ? 'INITIALIZING...' : 'START ENGINE'}
+            </button>
+            <p className="mt-3 text-[10px] text-[#629583]">La cámara se activa al iniciar el núcleo.</p>
+          </div>
+        </section>
+      ) : (
+        <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col gap-4">
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#00ffcc]/25 pb-4">
+            <div>
+              <h1 className="text-lg font-bold tracking-[0.12em] text-[#b7ffe9]">SENTRA CORE <span className="text-[#48ba98]">// V4.2</span></h1>
+              <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-[#62a78f]">Sistema operativo activo · {metrics?.mode.toUpperCase() ?? 'HYBRID'}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="border border-[#00ffb4]/25 px-3 py-2 text-[10px] text-[#8ddfc3]">{metrics?.processingLoad.fps ?? '--'} FPS</span>
+              <button type="button" onClick={() => void handleExport()} disabled={isExporting} className="min-h-10 border border-[#00ffb4]/35 px-3 py-2 text-[10px] font-bold tracking-wide text-[#baffea] transition hover:bg-[#00ffb4]/10 disabled:opacity-50">
+                {isExporting ? 'EXPORTANDO...' : 'EXPORTAR JSON'}
               </button>
-            ) : (
-              <div className="flex gap-2 text-xs">
-                <span className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-zinc-400">
-                  MODE: {metrics?.mode.toUpperCase() ?? 'HYBRID'}
-                </span>
-                <span className="rounded border border-emerald-800 bg-emerald-950/50 px-2 py-1 text-emerald-400">
-                  FPS: {metrics?.processingLoad.fps ?? 60}
-                </span>
+              <button type="button" onClick={handleLock} className="min-h-10 border border-red-400/35 px-3 py-2 text-[10px] font-bold tracking-wide text-red-200 transition hover:bg-red-400/10">LOCK NUCLEUS</button>
+            </div>
+          </header>
+
+          {error && <p className="border border-red-500/40 bg-red-950/30 p-3 text-xs text-red-200" role="alert">{error}</p>}
+
+          <nav aria-label="Secciones del núcleo" role="tablist" className="grid grid-cols-3 border-b border-[#00ffcc]/20">
+            {([
+              ['specs', 'SPECS MOTOR'],
+              ['environmental', 'SENSORES'],
+              ['vision', 'VISIÓN'],
+            ] as const).map(([tab, label]) => (
+              <button key={tab} id={`core-tab-${tab}`} type="button" role="tab" aria-selected={activeTab === tab} aria-controls={`core-panel-${tab}`} onClick={() => setActiveTab(tab)} className={`min-h-12 border-b-2 px-2 py-3 text-[10px] font-bold tracking-[0.12em] transition sm:text-xs ${activeTab === tab ? 'border-[#00ffb4] bg-[#00ffb4]/[0.06] text-[#c0ffeb]' : 'border-transparent text-[#638f80] hover:text-[#a1d9c4]'}`}>
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          <section id={`core-panel-${activeTab}`} role="tabpanel" aria-labelledby={`core-tab-${activeTab}`} className="flex-1 border border-[#00ffcc]/15 bg-[#07100e]/65 p-4 sm:p-6">
+            {activeTab === 'specs' && (
+              <div className="space-y-5">
+                <h2 className="border-b border-[#00ffcc]/20 pb-2 text-xs font-bold tracking-[0.12em] text-[#baffea]">TELEMETRÍA DE HARDWARE & MOTOR</h2>
+                <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">Rendimiento</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.processingLoad.fps ?? '--'} FPS / {metrics?.processingLoad.inferenceTimeMs.toFixed(1) ?? '--'} ms</strong></div>
+                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">Núcleo</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.mode.toUpperCase() ?? 'HYBRID'}</strong></div>
+                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">GPS</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.sensors.gps.source.toUpperCase() ?? 'STANDBY'}</strong></div>
+                  <div className="border border-[#00ffcc]/15 bg-black/30 p-4"><span className="block text-[#629583]">Audio</span><strong className="mt-2 block text-sm text-[#c0ffeb]">{metrics?.sensors.audio.speakerReady ? 'SYNTH ACTIVE' : 'MUTED'}</strong></div>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <section className="border border-[#00ffcc]/15 bg-black/25 p-4">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-[10px] text-[#8db4a5]"><h3 className="font-bold tracking-wider">ACOUSTIC RESONANCE</h3><span>MIC RMS: {metrics?.sensors.audio.ambientLevel?.toFixed(3) ?? 'OFF'}</span></div>
+                    <div className="flex h-14 items-end justify-center gap-1" aria-hidden="true">{INITIAL_BARS.map((height, index) => <div key={index} className="w-2 bg-[#00ffcc]/45" style={{ height: `${isSystemActive ? height : height * 0.2}%` }} />)}</div>
+                    <button type="button" onClick={handlePulse} className="mt-4 min-h-11 w-full border border-[#00ffcc]/25 py-2 text-[10px] transition hover:border-[#00ffcc] hover:text-white">TEST PULSO ACÚSTICO (440 Hz)</button>
+                  </section>
+                  <section className="border border-[#00ffcc]/15 bg-black/25 p-4 text-[10px] text-[#95b5a8]">
+                    <div className="mb-2 flex justify-between text-[#baffea]"><h3 className="font-bold tracking-wider">TELEMETRY FIFO</h3><span>{telemetryFifo.length}/{MAX_TELEMETRY_EVENTS}</span></div>
+                    <div className="max-h-32 overflow-y-auto" aria-label="Flujo de telemetría">{telemetryFifo.length === 0 ? <span>Esperando telemetría...</span> : telemetryFifo.map((item) => <div key={item.timestamp} className="flex gap-2 border-t border-[#00ffcc]/10 py-1.5"><time className="shrink-0 text-[#629583]" dateTime={item.timestamp}>{new Date(item.timestamp).toLocaleTimeString()}</time><span className="min-w-0 flex-1 truncate">{item.event}</span><span className="shrink-0 text-[#70e4b5]">{item.status}</span></div>)}</div>
+                    <div className="mt-3 max-h-16 overflow-y-auto border-t border-[#00ffcc]/10 pt-2 text-[#729687]">{logs.length === 0 ? 'Sin acciones registradas.' : logs.map((log) => <div key={log}>{log}</div>)}</div>
+                  </section>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <EngineStartButton />
+                  {onOpenVisionDemo && <button type="button" onClick={onOpenVisionDemo} className="min-h-11 border border-[#00ffcc]/35 px-4 py-2 text-[10px] font-bold tracking-wider text-[#aaffdf] transition hover:bg-[#00ffcc]/10">ABRIR DEMO DE VISIÓN</button>}
+                </div>
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => window.alert('SENTRA CORE: Cerebro digital descentralizado, arquitectura air-gapped, procesamiento en borde y veto ético humano.')}
-              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 transition-colors hover:border-[#00ffcc] hover:text-[#00ffcc]"
-            >
-              FICHA DEL NÚCLEO
-            </button>
-            <button
-              type="button"
-              onClick={() => window.alert('IMPACTO AMBIENTAL: Optimización de recursos, reducción de consumo energético en nodos periféricos y eficiencia algorítmica.')}
-              className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 transition-colors hover:border-[#00ffcc] hover:text-[#00ffcc]"
-            >
-              IMPACTO AMBIENTAL
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleExport()}
-              disabled={isExporting}
-              className="rounded border border-emerald-700 bg-emerald-950/30 px-4 py-2 text-xs font-bold tracking-wider text-emerald-300 transition-colors hover:bg-emerald-900/60 disabled:cursor-wait disabled:opacity-50"
-            >
-              {isExporting ? 'EXPORTANDO...' : 'EXPORTAR JSON FIRMADO'}
-            </button>
-          </div>
-        </header>
 
-        <div className="flex flex-col items-center gap-4 rounded-lg border border-[#00ffcc]/20 bg-[#0a0a0f]/60 p-4 sm:flex-row sm:justify-center sm:gap-10">
-          <EngineStartButton />
-          {onOpenVisionDemo && (
-            <div className="flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={onOpenVisionDemo}
-                className="rounded-full border-2 border-[#00ffcc]/60 bg-[#00ffcc]/5 px-8 py-3 font-mono text-sm font-bold tracking-[0.2em] text-[#00ffcc]/90 shadow-[0_0_12px_rgba(0,255,204,0.25)] transition-all hover:border-[#00ffcc] hover:bg-[#00ffcc]/15 hover:shadow-[0_0_20px_rgba(0,255,204,0.45)]"
-              >
-                VISIÓN
-              </button>
-              <p className="max-w-[220px] text-center text-[10px] leading-tight text-zinc-500">
-                Demo interactiva real (cámara + detección), tal como funciona hoy en la web. Versión nativa Flutter para Android: en roadmap Q4 2026.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {error && <p className="rounded border border-red-500/50 bg-red-950/30 p-3 text-sm text-red-300" role="alert">{error}</p>}
-
-        <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
-          <section className="flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-[#08080c] p-3">
-            <div className="mb-2 flex justify-between text-xs text-zinc-400">
-              <span>[ SENSORY_01: VISION_FEED ]</span>
-              <span className="text-cyan-400">INFERENCE: {metrics?.processingLoad.inferenceTimeMs.toFixed(1) ?? '12.4'}ms</span>
-            </div>
-            <div className="relative flex min-h-[220px] flex-1 items-center justify-center overflow-hidden rounded border border-zinc-900 bg-black">
-              <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover opacity-80" />
-              {!isSystemActive && <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-xs text-zinc-600">ESPERANDO ACTIVACIÓN DE CÁMARA...</div>}
-              <div className="absolute left-2 top-2 h-2 w-2 border-l-2 border-t-2 border-[#00ffcc]" />
-              <div className="absolute right-2 top-2 h-2 w-2 border-r-2 border-t-2 border-[#00ffcc]" />
-              <div className="absolute bottom-2 left-2 h-2 w-2 border-b-2 border-l-2 border-[#00ffcc]" />
-              <div className="absolute bottom-2 right-2 h-2 w-2 border-b-2 border-r-2 border-[#00ffcc]" />
-            </div>
-          </section>
-
-          <section className="flex flex-col justify-between rounded-lg border border-zinc-800 bg-[#08080c] p-3">
-            <div className="mb-2 flex justify-between text-xs text-zinc-400">
-              <span>[ SENSORY_02: ACOUSTIC_RESONANCE ]</span>
-              <span className={metrics?.sensors.audio.speakerReady ? 'text-emerald-400' : 'text-amber-500'}>
-                {metrics?.sensors.audio.speakerReady ? 'SYNTH_ACTIVE' : 'MUTED'}
-              </span>
-              <span className="text-cyan-400">
-                MIC RMS: {metrics?.sensors.audio.ambientLevel?.toFixed(3) ?? 'OFF'}
-              </span>
-            </div>
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded border border-zinc-900 bg-black/40 p-4">
-              <div className="flex h-16 w-full items-end justify-center gap-1">
-                {INITIAL_BARS.map((height, index) => (
-                  <div key={index} className="w-2 rounded-t bg-[#00ffcc]/40 transition-all duration-150" style={{ height: `${isSystemActive ? height : height * 0.2}%` }} />
-                ))}
-              </div>
-              <button type="button" onClick={handlePulse} disabled={!isSystemActive} className="w-full rounded border border-zinc-700 bg-zinc-900 py-2 text-xs transition-colors hover:border-[#00ffcc] hover:text-[#00ffcc] disabled:opacity-40">
-                TEST PULSO ACÚSTICO (440Hz)
-              </button>
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-[#08080c] p-3 text-xs">
-            <div className="mb-1 flex justify-between text-zinc-400"><span>[ HARDWARE_TELEMETRY ]</span><span>EDGE_HOST</span></div>
-            <div className="flex flex-col gap-1.5 rounded border border-zinc-900 bg-black/40 p-2">
-              <div className="flex justify-between"><span className="text-zinc-500">GPS Lat/Lon:</span><span className="text-white">{metrics?.sensors.gps.lat?.toFixed(4) ?? '--'}, {metrics?.sensors.gps.lon?.toFixed(4) ?? '--'}</span></div>
-              <div className="flex justify-between"><span className="text-zinc-500">GPS Source:</span><span className="uppercase text-cyan-400">{metrics?.sensors.gps.source ?? 'standby'}</span></div>
-            </div>
-            <div className="flex flex-col gap-1.5 rounded border border-zinc-900 bg-black/40 p-2">
-              <div className="flex justify-between"><span className="text-zinc-500">Orientación (Alpha):</span><span className="text-white">{metrics?.sensors.orientation.alpha?.toFixed(1) ?? '--'}°</span></div>
-              <div className="flex justify-between"><span className="text-zinc-500">Batería Dispositivo:</span><span className="text-emerald-400">{battery === null || battery === undefined ? '--' : `${Math.round(battery * 100)}%`}</span></div>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-              <div className="flex max-h-[150px] flex-col overflow-hidden rounded border border-zinc-900 bg-black/60 p-2 text-[10px] text-zinc-400">
-                <div className="mb-1 flex justify-between text-zinc-500">
-                  <span>[ TELEMETRY_FIFO ]</span>
-                  <span>{telemetryFifo.length}/{MAX_TELEMETRY_EVENTS}</span>
+            {activeTab === 'environmental' && (
+              <div className="space-y-5">
+                <h2 className="border-b border-[#00ffcc]/20 pb-2 text-xs font-bold tracking-[0.12em] text-[#baffea]">SENSORES DEL DISPOSITIVO</h2>
+                <div className="divide-y divide-[#00ffcc]/10 border-y border-[#00ffcc]/10 text-xs">
+                  <div className="flex flex-wrap justify-between gap-2 py-4"><span className="text-[#88b3a2]">Posición GPS</span><strong className="text-[#c0ffeb]">{metrics?.sensors.gps.lat?.toFixed(4) ?? '--'}, {metrics?.sensors.gps.lon?.toFixed(4) ?? '--'}</strong></div>
+                  <div className="flex flex-wrap justify-between gap-2 py-4"><span className="text-[#88b3a2]">Origen GPS</span><strong className="uppercase text-[#83e2bd]">{metrics?.sensors.gps.source ?? 'standby'}</strong></div>
+                  <div className="flex flex-wrap justify-between gap-2 py-4"><span className="text-[#88b3a2]">Orientación (Alpha)</span><strong className="text-[#c0ffeb]">{metrics?.sensors.orientation.alpha?.toFixed(1) ?? '--'}°</strong></div>
+                  <div className="flex flex-wrap justify-between gap-2 py-4"><span className="text-[#88b3a2]">Batería del dispositivo</span><strong className="text-[#c0ffeb]">{battery == null ? 'No disponible' : `${Math.round(battery * 100)}%`}</strong></div>
+                  <div className="flex flex-wrap justify-between gap-2 py-4"><span className="text-[#88b3a2]">Nivel de audio ambiental</span><strong className="text-[#c0ffeb]">{metrics?.sensors.audio.ambientLevel?.toFixed(3) ?? 'No disponible'}</strong></div>
                 </div>
-                <div className="overflow-y-auto" aria-label="Flujo de telemetría">
-                  {telemetryFifo.length === 0 ? <span>Esperando telemetría...</span> : telemetryFifo.map((item) => (
-                    <div key={item.timestamp} className="flex gap-2 border-t border-zinc-900 py-1">
-                      <time className="shrink-0 text-zinc-500" dateTime={item.timestamp}>{new Date(item.timestamp).toLocaleTimeString()}</time>
-                      <span className="min-w-0 flex-1 truncate">{item.event}</span>
-                      <span className="shrink-0 text-emerald-400">{item.status}</span>
-                    </div>
-                  ))}
+                <p className="text-[10px] leading-relaxed text-[#638f80]">Los valores dependen de los permisos y sensores disponibles en este dispositivo. Los sensores sin lectura aparecen como no disponibles.</p>
+              </div>
+            )}
+
+            {activeTab === 'vision' && (
+              <div className="flex min-h-[360px] flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#00ffcc]/20 pb-2">
+                  <h2 className="text-xs font-bold tracking-[0.12em] text-[#baffea]">VISIÓN ARTIFICIAL</h2>
+                  <span className="text-[10px] text-[#83e2bd]">INFERENCE: {metrics?.processingLoad.inferenceTimeMs.toFixed(1) ?? '--'} ms</span>
+                </div>
+                <div className="relative flex min-h-[300px] flex-1 items-center justify-center overflow-hidden border border-[#00ffcc]/25 bg-black">
+                  <video ref={videoRef} autoPlay playsInline muted aria-label="Vista de cámara en vivo" className="absolute inset-0 h-full w-full object-cover opacity-80" />
+                  {!isSystemActive && <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-xs text-[#668478]">ESPERANDO ACTIVACIÓN DE CÁMARA...</div>}
+                  <div aria-hidden="true" className="pointer-events-none absolute inset-3 border border-[#00ffcc]/15"><span className="absolute -left-px -top-px h-4 w-4 border-l-2 border-t-2 border-[#00ffcc]" /><span className="absolute -right-px -top-px h-4 w-4 border-r-2 border-t-2 border-[#00ffcc]" /><span className="absolute -bottom-px -left-px h-4 w-4 border-b-2 border-l-2 border-[#00ffcc]" /><span className="absolute -bottom-px -right-px h-4 w-4 border-b-2 border-r-2 border-[#00ffcc]" /></div>
+                  {!isSystemActive && <p className="relative z-10 bg-black/70 px-4 py-2 text-[10px] tracking-wider text-[#83b5a0]">CÁMARA EN ESPERA</p>}
                 </div>
               </div>
-              <div className="max-h-[64px] overflow-y-auto rounded border border-zinc-900 bg-black/60 p-2 text-[10px] text-zinc-400">
-                {logs.length === 0 ? <span>Sin acciones registradas.</span> : logs.map((log) => <div key={log}>{log}</div>)}
-              </div>
-            </div>
+            )}
           </section>
         </div>
-      </div>
+      )}
     </main>
   );
 }

@@ -4,8 +4,8 @@
   "description": "Sentra Core API Server — WebSocket + REST backend for the Sentra Core motor",
   "type": "module",
   "scripts": {
-    "start": "node --import tsx server/index.ts",
-    "dev": "node --import tsx --watch server/index.ts"
+    "start": "node --import tsx index.ts",
+    "dev": "node --import tsx --watch index.ts"
   },
   "dependencies": {
     "ws": "^8.16.0",

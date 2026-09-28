@@ -73,7 +73,7 @@ export class GeminiService {
   constructor(config?: Partial<GeminiConfig>) {
     this.config = { model: 'gemini-2.0-flash', ...config };
     this.bridge = new TCREIBridge();
-    this.envApiKey = import.meta.env.VITE_GEMINI_API_KEY ?? '';
+    this.envApiKey = import.meta.env?.VITE_GEMINI_API_KEY ?? '';
     if (this.envApiKey) {
       this.config.apiKey = this.envApiKey;
       this.useRemote = true;

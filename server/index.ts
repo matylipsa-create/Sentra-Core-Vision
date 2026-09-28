@@ -285,7 +285,7 @@ const handlers: Record<string, Handler> = {
 
 // ─── WebSocket server ───────────────────────────────────
 
-const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
+const wss = new WebSocketServer({ noServer: true });
 const clients = new Set<WebSocket>();
 
 function broadcast(data: unknown): void {
@@ -536,6 +536,12 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('error', reject);
   });
 }
+
+httpServer.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, (webSocket) => {
+    wss.emit('connection', webSocket, request);
+  });
+});
 
 // ─── Bio tick broadcast ─────────────────────────────────
 
