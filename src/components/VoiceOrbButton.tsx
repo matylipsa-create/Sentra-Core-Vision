@@ -18,6 +18,7 @@ export function VoiceOrbButton({ onCommand }: VoiceOrbButtonProps = {}) {
 
   const [orbState, setOrbState] = useState<OrbState>('idle');
   const [oneShotListening, setOneShotListening] = useState(false);
+  const [localSttAvailable, setLocalSttAvailable] = useState<boolean | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const lastTapRef = useRef(0);
   const dispatchCommand = useCallback((command: string) => {
@@ -31,6 +32,12 @@ export function VoiceOrbButton({ onCommand }: VoiceOrbButtonProps = {}) {
       (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
     if (SRC) {
       const recognition = new SRC();
+      if (!('processLocally' in recognition)) {
+        setLocalSttAvailable(false);
+        recognitionRef.current = null;
+        return;
+      }
+      recognition.processLocally = true;
       recognition.lang = 'es-ES';
       recognition.continuous = false;
       recognition.interimResults = false;
@@ -47,7 +54,8 @@ export function VoiceOrbButton({ onCommand }: VoiceOrbButtonProps = {}) {
         setOrbState(isPassiveListening ? 'listening' : 'idle');
       };
       recognitionRef.current = recognition;
-    }
+      setLocalSttAvailable(true);
+    } else setLocalSttAvailable(false);
   }, [dispatchCommand, isPassiveListening]);
 
   useEffect(() => {
@@ -127,7 +135,8 @@ export function VoiceOrbButton({ onCommand }: VoiceOrbButtonProps = {}) {
         setOneShotListening(false);
       }
     } else {
-      togglePassiveListening();
+      voiceManager.speak('El reconocimiento de voz local no está disponible en este navegador.', 2);
+      setLocalSttAvailable(false);
     }
   };
 
@@ -169,7 +178,7 @@ export function VoiceOrbButton({ onCommand }: VoiceOrbButtonProps = {}) {
       <span className="voice-orb-label" aria-live="polite">
         {orbState === 'listening' && 'Escuchando...'}
         {orbState === 'speaking' && 'Hablando...'}
-        {orbState === 'idle' && 'Toca para hablar'}
+        {orbState === 'idle' && (localSttAvailable === false ? 'STT local no disponible' : 'Toca para hablar')}
         {orbState === 'disabled' && 'Voz apagada'}
       </span>
     </div>

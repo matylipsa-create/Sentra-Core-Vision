@@ -10,6 +10,17 @@ import { playInterfaceCue } from '../lib/engineSound';
 type ConnectionStatus = 'ONLINE' | 'OFFLINE' | 'RECONNECTING';
 type PriorityEvent = { type: string; text: string };
 type QueuedEvent = { item: PriorityEvent; priority: number; order: number };
+interface BackendPerformance {
+  cpuPercent: number;
+  memoryRssMb: number;
+  heapUsedMb: number;
+  websocketRttMs: number | null;
+  websocketClients: number;
+  bufferedBytes: number;
+  backpressuredClients: number;
+  cepRecentSignals: number;
+  queueHealth: 'healthy' | 'backpressured';
+}
 
 class SentraPriorityQueue {
   private heap: QueuedEvent[] = [];
@@ -70,6 +81,7 @@ export function MasterEngineDashboard() {
   const [busMessage, setBusMessage] = useState('Bus local sin conexión.');
   const [rttMs, setRttMs] = useState<number | null>(null);
   const [outboxCount, setOutboxCount] = useState(0);
+  const [backendPerformance, setBackendPerformance] = useState<BackendPerformance | null>(null);
   const [activeTelemetry, setActiveTelemetry] = useState('Esperando flujo de sensores...');
   const [ocrText, setOcrText] = useState('Sin texto detectado');
   const [isStarting, setIsStarting] = useState(false);
@@ -89,6 +101,10 @@ export function MasterEngineDashboard() {
       setOutboxCount(snapshot.queuedCount);
     });
     const unsubscribeEvents = bus.onEvent((name, data) => {
+      if (name === 'system.performance' && data && typeof data === 'object') {
+        setBackendPerformance(data as BackendPerformance);
+        return;
+      }
       const item = { type: 'BUS_EVENT', text: name };
       queueRef.current.enqueue(item, 5);
       const next = queueRef.current.dequeue();
@@ -261,6 +277,13 @@ export function MasterEngineDashboard() {
       </header>
 
       <p className="text-[10px] text-[#83a999]" aria-live="polite">{busMessage}</p>
+
+      <section aria-label="Salud y profiling del backend" className="grid grid-cols-2 gap-px border border-[#00d4a0]/20 bg-[#00d4a0]/15 sm:grid-cols-4">
+        <div className="bg-[#0b1713] px-3 py-2"><p className="text-[9px] uppercase text-[#789788]">CPU backend</p><p className="mt-1 text-xs text-[#c1ffe8]">{backendPerformance ? `${backendPerformance.cpuPercent.toFixed(1)}%` : '--'}</p></div>
+        <div className="bg-[#0b1713] px-3 py-2"><p className="text-[9px] uppercase text-[#789788]">Memoria RSS / heap</p><p className="mt-1 text-xs text-[#c1ffe8]">{backendPerformance ? `${backendPerformance.memoryRssMb} / ${backendPerformance.heapUsedMb} MB` : '--'}</p></div>
+        <div className="bg-[#0b1713] px-3 py-2"><p className="text-[9px] uppercase text-[#789788]">RTT WebSocket / clientes</p><p className="mt-1 text-xs text-[#c1ffe8]">{backendPerformance ? `${backendPerformance.websocketRttMs ?? '--'} ms / ${backendPerformance.websocketClients}` : '--'}</p></div>
+        <div className="bg-[#0b1713] px-3 py-2"><p className="text-[9px] uppercase text-[#789788]">Colas / CEP</p><p className={`mt-1 text-xs ${backendPerformance?.queueHealth === 'backpressured' ? 'text-amber-200' : 'text-[#c1ffe8]'}`}>{backendPerformance ? `${backendPerformance.queueHealth} · ${Math.round(backendPerformance.bufferedBytes / 1024)} KB · ${backendPerformance.cepRecentSignals} señales` : '--'}</p></div>
+      </section>
 
       {error && <p role="alert" className="border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">{error}</p>}
 

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node --import tsx index.ts",
-    "dev": "node --import tsx --watch index.ts"
+    "dev": "node --import tsx --watch index.ts",
+    "test": "node --import tsx --test",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "ws": "^8.16.0",

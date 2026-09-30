@@ -179,6 +179,11 @@ export class VoiceManager {
 
     this.passiveCallback = callback;
     const recognition = new SRC();
+    if (!('processLocally' in recognition)) {
+      this.passiveCallback = null;
+      return false;
+    }
+    recognition.processLocally = true;
     recognition.lang = 'es-ES';
     recognition.continuous = true;
     recognition.interimResults = false;

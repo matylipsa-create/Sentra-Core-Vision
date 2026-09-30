@@ -15,6 +15,17 @@ El servidor escucha en el puerto 8080 (configurable via `SENTRA_PORT`).
 - **WebSocket**: `ws://localhost:8080`
 - **REST API**: `http://localhost:8080/api/...`
 
+## Configuracion de produccion
+
+- `SENTRA_CORS_ORIGINS`: lista separada por comas de origenes HTTPS exactos autorizados. HTTP queda permitido solo para loopback.
+- `SENTRA_PLUGIN_CONTROL_TOKEN`: secreto requerido en `payload.controlToken` para `attach_plugin`, `activate_plugin`, `deactivate_plugin` y `detach_plugin` por TCREI.
+- `SENTRA_EVIDENCE_PATH`: ruta del diario EVOLIS JSONL. Por defecto se usa `server/data/evolis-audit.jsonl`.
+- `SENTRA_EVIDENCE_KEY_PATH`: ruta de la clave EVOLIS; por defecto se guarda junto al diario con extension `.key.json`.
+
+El backend no usa IndexedDB. El archivo de clave contiene la clave privada: restringe el acceso del sistema operativo y conserva una copia segura junto con el diario.
+
+Para el control de plugins, las consultas `query:get_plugins` son de lectura; los comandos `attach_plugin`, `activate_plugin`, `deactivate_plugin` y `detach_plugin` requieren el token configurado.
+
 ## Endpoints REST
 
 | Metodo | Ruta | Descripcion |

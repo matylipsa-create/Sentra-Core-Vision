@@ -1,5 +1,5 @@
 import {
-  ReactNode, createContext, useContext, useState, useCallback, useEffect,
+  ReactNode, createContext, useContext, useState, useCallback, useEffect, useRef,
 } from 'react';
 import { evolis, EVOLISEvidence } from '../core/EVOLIS';
 import { moralNode, MoralEvaluation } from '../core/MoralNode';
@@ -30,11 +30,19 @@ import { listNodes } from '../core/InflectionNode';
 import { getHistory, getInclination } from '../core/DecisionHistory';
 import { openSovereigntyDB } from '../core/SovereigntyStorage';
 import { setCurrentSystemState, type SystemSnapshot } from '../core/InflectionNode';
+import { activatePwaPlugin, deactivatePwaPlugin } from '../modules/PwaPluginRegistry';
 
 export type ModuleName =
   | 'vision' | 'seguridad' | 'movimiento' | 'juego'
   | 'aprendizaje' | 'impacto' | 'silencio' | 'evidencia' | 'bio' | 'guardian'
   | 'identidad' | 'autopercepcion' | 'cognitivo' | 'bitacora';
+
+function pluginForModule(module: ModuleName): string | null {
+  if (module === 'vision') return 'vision';
+  if (module === 'seguridad' || module === 'guardian') return 'security';
+  if (module === 'movimiento' || module === 'impacto') return 'telemetry';
+  return null;
+}
 
 export type UiMode = 'vision' | 'sentinel';
 
@@ -221,6 +229,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       optimalConfig: savedOptimalConfig,
     };
   });
+  const activePwaPluginRef = useRef<string>('');
+  const pluginTransitionRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     openSovereigntyDB().then(async (db) => {
@@ -284,6 +294,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setModule = useCallback((module: ModuleName) => {
+    const nextPlugin = pluginForModule(module);
+    const previousPlugin = activePwaPluginRef.current;
+    if (nextPlugin !== previousPlugin) {
+      activePwaPluginRef.current = nextPlugin ?? '';
+      pluginTransitionRef.current = pluginTransitionRef.current.then(async () => {
+        if (previousPlugin) await deactivatePwaPlugin(previousPlugin);
+        if (nextPlugin) await activatePwaPlugin(nextPlugin);
+      }).catch((error: unknown) => {
+        console.error('[AppContext] No se pudo cambiar el plugin activo:', error);
+      });
+    }
     setState((s) => ({ ...s, activeModule: module }));
     voiceManager.speak(`Modulo ${module} activado`, 3);
   }, []);

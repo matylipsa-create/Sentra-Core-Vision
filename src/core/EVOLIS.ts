@@ -30,6 +30,12 @@ export interface EVOLISStats {
   modules: string[];
 }
 
+export interface EVOLISPersistenceAdapter {
+  loadKeyPair(): Promise<{ publicKey: string; privateKey: string } | undefined>;
+  saveKeyPair(keyPair: { publicKey: string; privateKey: string }): Promise<void>;
+  saveEvidence(evidence: EVOLISEvidence): Promise<void>;
+}
+
 export interface EventRecord {
   id: string;
   type: string;
@@ -63,22 +69,32 @@ export class EVOLIS {
   private entries: EVOLISEvidence[] = [];
   private publicKey: string = '';
   private privateKey: string = '';
+  private persistenceAdapter: EVOLISPersistenceAdapter = {
+    loadKeyPair: () => storageService.loadEvolisKey(),
+    saveKeyPair: (keyPair) => storageService.saveEvolisKey(keyPair),
+    saveEvidence: (evidence) => storageService.saveEvidence(evidence),
+  };
   private integrityListeners: Set<ChainIntegrityListener> = new Set();
   private writeQueue: Promise<void> = Promise.resolve();
   private lastVerifiedIndex = -1;
   private lastVerifiedState = true;
 
+  setPersistenceAdapter(adapter: EVOLISPersistenceAdapter): void {
+    if (this.publicKey) throw new Error('Persistence adapter must be configured before initialization');
+    this.persistenceAdapter = adapter;
+  }
+
   async initialize(): Promise<void> {
     if (this.publicKey) return;
     try {
-      const saved = await storageService.loadEvolisKey();
+      const saved = await this.persistenceAdapter.loadKeyPair();
       if (saved) {
         this.publicKey = saved.publicKey;
         this.privateKey = saved.privateKey;
         return;
       }
       const pair = await generateECDSAKeyPair();
-      await storageService.saveEvolisKey(pair);
+      await this.persistenceAdapter.saveKeyPair(pair);
       this.publicKey = pair.publicKey;
       this.privateKey = pair.privateKey;
     } catch {
@@ -107,7 +123,7 @@ export class EVOLIS {
       };
       this.entries.push(evidence);
       try {
-        await storageService.saveEvidence(evidence);
+        await this.persistenceAdapter.saveEvidence(evidence);
       } catch (e) {
         console.error('Error saving evidence to storage:', e);
       }

@@ -1,22 +1,28 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
+import { cpus } from 'node:os';
+import { performance } from 'node:perf_hooks';
 import { TCREIMessage, makeResponse, makeEvent, parseMessage } from './tcrei-protocol.js';
 
 // Motor imports
 import { evolis } from '../src/core/EVOLIS.js';
 import { moralNode } from '../src/core/MoralNode.js';
 import { geminiService } from '../src/core/GeminiService.js';
-import { perceptionEngine } from '../src/core/PerceptionEngine.js';
 import { moduleManager } from '../src/modules/ModuleManager.js';
 import { bioSoftware, BioProtocol } from '../src/core/BioSoftwareInterface.js';
 import { bacterialGuardian } from '../src/core/BacterialGuardian.js';
-import { ternaryEthics, tritToValue } from '../src/core/TernaryMath.js';
 import { usbService } from '../src/services/USBService.js';
 import { PowerMode } from '../src/core/PowerManager.js';
 import { syncManager, SyncTransport } from '../src/core/SyncManager.js';
-import { storageService } from '../src/services/StorageService.js';
 import { EvidenceJournal } from './EvidenceJournal.js';
+import { ComplexEventProcessor } from '../src/core/ComplexEventProcessor.js';
+import {
+  attachServerPlugin,
+  authorizePluginControl,
+  initializeServerPlugins,
+  serverPluginRegistry,
+} from './PluginHost.js';
 
 const PORT = parseInt(process.env.SENTRA_PORT ?? '8080', 10);
 
@@ -45,6 +51,19 @@ const state: ServerState = {
 };
 
 const evidenceJournal = new EvidenceJournal();
+const telemetryCEP = new ComplexEventProcessor();
+telemetryCEP.registerRule({
+  id: 'multi-sensor-critical-window',
+  windowMs: 5000,
+  minEvents: 2,
+  distinctBy: (signal) => signal.source,
+  matches: (signal) => signal.level === 'critical',
+});
+evolis.setPersistenceAdapter({
+  loadKeyPair: () => evidenceJournal.loadKeyPair(),
+  saveKeyPair: (keyPair) => evidenceJournal.saveKeyPair(keyPair),
+  saveEvidence: (evidence) => evidenceJournal.append(evidence),
+});
 const persistedEvidence = await evidenceJournal.load();
 if (persistedEvidence.length > 0) evolis.importState(persistedEvidence);
 
@@ -52,12 +71,9 @@ if (persistedEvidence.length > 0) evolis.importState(persistedEvidence);
 
 async function init(): Promise<void> {
   await evolis.initialize();
-  await storageService.init();
-  const entries = await storageService.getAllEvidence();
-  if (entries.length > 0) evolis.importState(entries);
   bioSoftware.setEnabled(state.bioEnabled);
   moralNode.setHumanVeto(state.humanVeto);
-  bacterialGuardian.activate();
+  await initializeServerPlugins();
 }
 
 // ─── Command handlers ───────────────────────────────────
@@ -66,6 +82,9 @@ type Handler = (msg: TCREIMessage) => Promise<unknown>;
 
 const handlers: Record<string, Handler> = {
   'command:process': async (msg) => {
+    if (state.activeModule === 'vision' && !serverPluginRegistry.isActive('vision')) {
+      throw new Error('Vision plugin is not active');
+    }
     const command = (msg.payload.command as string) ?? '';
     const perceptionSummary = (msg.payload.perception as string) ?? 'Sin percepcion activa';
     const eval_ = moralNode.evaluate(command, { externalRequest: state.worldEnabled });
@@ -78,16 +97,38 @@ const handlers: Record<string, Handler> = {
     }
     const response = await geminiService.query(state.activeModule, perceptionSummary, command);
     const evidence = await evolis.record(state.activeModule, 'command', command);
-    await storageService.saveEvidence(evidence);
     broadcast(makeEvent('evidence.recorded', { id: evidence.id, index: evidence.entry.index }));
     return { allowed: true, response };
   },
 
   'command:telemetry': async (msg) => {
+    if (!serverPluginRegistry.isActive('telemetry')) throw new Error('Telemetry plugin is not active');
     const serialized = JSON.stringify(msg.payload);
     if (serialized.length > 32000) throw new Error('Telemetry payload exceeds limit');
     const evidence = await evolis.record('telemetry', 'sensor_snapshot', serialized);
-    await evidenceJournal.append(evidence);
+    const rawSignals = msg.payload.signals;
+    if (Array.isArray(rawSignals)) {
+      for (const rawSignal of rawSignals) {
+        if (!rawSignal || typeof rawSignal !== 'object') continue;
+        const candidate = rawSignal as Record<string, unknown>;
+        if (typeof candidate.type !== 'string' || !candidate.type.trim()) continue;
+        const level = candidate.level === 'critical' || candidate.level === 'warning'
+          ? candidate.level
+          : 'info';
+        const matches = telemetryCEP.process({
+          type: candidate.type,
+          source: typeof candidate.source === 'string' ? candidate.source : candidate.type,
+          level,
+          timestamp: Date.now(),
+          payload: candidate,
+        });
+        for (const match of matches) {
+          const signalTypes = [...new Set(match.signals.map((signal) => signal.type))];
+          bacterialGuardian.reportSensorCorrelation(match.ruleId, signalTypes);
+          broadcast(makeEvent('guardian.sensor_correlation', match));
+        }
+      }
+    }
     broadcast(makeEvent('evidence.recorded', { id: evidence.id, index: evidence.entry.index }));
     return { accepted: true, evidenceId: evidence.id, hash: evidence.entry.hash };
   },
@@ -96,7 +137,6 @@ const handlers: Record<string, Handler> = {
     const serialized = JSON.stringify(msg.payload);
     if (serialized.length > 32000) throw new Error('Operator action payload exceeds limit');
     const evidence = await evolis.record('operator', 'critical_action', serialized);
-    await evidenceJournal.append(evidence);
     broadcast(makeEvent('evidence.recorded', { id: evidence.id, index: evidence.entry.index }));
     return { accepted: true, evidenceId: evidence.id, hash: evidence.entry.hash };
   },
@@ -226,9 +266,37 @@ const handlers: Record<string, Handler> = {
     modules: moduleManager.getAllModules(),
   }),
 
+  'query:get_plugins': async () => ({ plugins: serverPluginRegistry.list() }),
+
+  'command:attach_plugin': async (msg) => {
+    if (!authorizePluginControl(msg.payload.controlToken)) throw new Error('Plugin control is not authorized');
+    attachServerPlugin(String(msg.payload.pluginId ?? ''));
+    return { plugins: serverPluginRegistry.list() };
+  },
+
+  'command:activate_plugin': async (msg) => {
+    if (!authorizePluginControl(msg.payload.controlToken)) throw new Error('Plugin control is not authorized');
+    const pluginId = String(msg.payload.pluginId ?? '');
+    await serverPluginRegistry.activate(pluginId, undefined);
+    return { plugins: serverPluginRegistry.list() };
+  },
+
+  'command:deactivate_plugin': async (msg) => {
+    if (!authorizePluginControl(msg.payload.controlToken)) throw new Error('Plugin control is not authorized');
+    const pluginId = String(msg.payload.pluginId ?? '');
+    await serverPluginRegistry.deactivate(pluginId, undefined);
+    return { plugins: serverPluginRegistry.list() };
+  },
+
+  'command:detach_plugin': async (msg) => {
+    if (!authorizePluginControl(msg.payload.controlToken)) throw new Error('Plugin control is not authorized');
+    const pluginId = String(msg.payload.pluginId ?? '');
+    await serverPluginRegistry.detach(pluginId, undefined);
+    return { plugins: serverPluginRegistry.list() };
+  },
+
   'command:export': async () => {
-    await storageService.downloadExport();
-    return { exported: true };
+    return { exported: true, evidence: evolis.exportState() };
   },
 
   'query:get_usb_devices': async () => ({
@@ -310,6 +378,22 @@ const handlers: Record<string, Handler> = {
 
 const wss = new WebSocketServer({ noServer: true });
 const clients = new Set<WebSocket>();
+const websocketRtt = new Map<WebSocket, number>();
+const websocketPingStartedAt = new WeakMap<WebSocket, number>();
+const configuredCorsOrigins = new Set(
+  (process.env.SENTRA_CORS_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean)
+);
+
+function isAllowedOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.origin !== origin) return false;
+    const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+    return isLoopback || (parsed.protocol === 'https:' && configuredCorsOrigins.has(origin));
+  } catch {
+    return false;
+  }
+}
 
 function broadcast(data: unknown): void {
   const msg = JSON.stringify(data);
@@ -320,6 +404,10 @@ function broadcast(data: unknown): void {
 
 wss.on('connection', (ws) => {
   clients.add(ws);
+  ws.on('pong', () => {
+    const startedAt = websocketPingStartedAt.get(ws);
+    if (startedAt !== undefined) websocketRtt.set(ws, Math.round(performance.now() - startedAt));
+  });
 
   ws.on('message', async (raw) => {
     const msg = parseMessage(raw.toString());
@@ -342,7 +430,10 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => clients.delete(ws));
+  ws.on('close', () => {
+    clients.delete(ws);
+    websocketRtt.delete(ws);
+  });
 
   ws.send(JSON.stringify(makeEvent('connection.status', { connected: true })));
 });
@@ -356,11 +447,15 @@ bacterialGuardian.subscribe((status) => {
 // ─── REST API ───────────────────────────────────────────
 
 const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  const origin = req.headers.origin;
+  if (origin) res.setHeader('Vary', 'Origin');
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
   if (req.method === 'OPTIONS') {
-    res.writeHead(200);
+    res.writeHead(204);
     res.end();
     return;
   }
@@ -517,7 +612,6 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
       }
       const response = await geminiService.query(state.activeModule, perception, command);
       const evidence = await evolis.record(state.activeModule, 'command', command);
-      await storageService.saveEvidence(evidence);
       sendJson(200, { allowed: true, response, evidenceId: evidence.id });
       return;
     }
@@ -539,7 +633,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
         state.bioEnabled = value as boolean;
         bioSoftware.setEnabled(state.bioEnabled);
       } else if (key in state) {
-        (state as Record<string, unknown>)[key] = value;
+        (state as unknown as Record<string, unknown>)[key] = value;
       }
       sendJson(200, { ok: true, key, value });
       return;
@@ -561,6 +655,12 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 httpServer.on('upgrade', (request, socket, head) => {
+  const origin = request.headers.origin;
+  if (origin && !isAllowedOrigin(origin)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
   wss.handleUpgrade(request, socket, head, (webSocket) => {
     wss.emit('connection', webSocket, request);
   });
@@ -581,14 +681,51 @@ const bioTickInterval = setInterval(() => {
       breathPhase,
       breathCycles: bioState.currentSession?.metrics.breathCycles ?? 0,
     }));
-    bioSoftware.tick((Date.now() - (bioState.currentSession?.startedAt ?? Date.now())) * 1000);
+    bioSoftware.tick(Date.now() - (bioState.currentSession?.startedAt ?? Date.now()));
     if (!bioSoftware.getState().currentSession) {
       broadcast(makeEvent('bio.session_ended', {}));
     }
   }
 }, 1000);
 
+let previousCpu = process.cpuUsage();
+let previousCpuSampleAt = performance.now();
+const performanceInterval = setInterval(() => {
+  const now = performance.now();
+  const elapsedMs = Math.max(1, now - previousCpuSampleAt);
+  const cpuDelta = process.cpuUsage(previousCpu);
+  previousCpu = process.cpuUsage();
+  previousCpuSampleAt = now;
+  const memory = process.memoryUsage();
+  const bufferedBytes = Array.from(clients).reduce((total, client) => total + client.bufferedAmount, 0);
+  const backpressuredClients = Array.from(clients).filter((client) => client.bufferedAmount > 256 * 1024).length;
+  const rtts = [...websocketRtt.values()];
+  const cepStats = telemetryCEP.getStats();
+
+  broadcast(makeEvent('system.performance', {
+    sampledAt: Date.now(),
+    cpuPercent: Math.min(100, ((cpuDelta.user + cpuDelta.system) / (elapsedMs * 1000 * cpus().length)) * 100),
+    memoryRssMb: Math.round(memory.rss / 1024 / 1024),
+    heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024),
+    websocketRttMs: rtts.length ? Math.round(rtts.reduce((sum, value) => sum + value, 0) / rtts.length) : null,
+    websocketClients: clients.size,
+    bufferedBytes,
+    backpressuredClients,
+    cepRecentSignals: cepStats.recentSignals,
+    cepRules: cepStats.ruleCount,
+    queueHealth: backpressuredClients > 0 ? 'backpressured' : 'healthy',
+  }));
+  for (const client of clients) {
+    if (client.readyState === WebSocket.OPEN) {
+      websocketPingStartedAt.set(client, now);
+      client.ping();
+    }
+  }
+}, 1000);
+
 // ─── Start servers ──────────────────────────────────────
+
+await init();
 
 httpServer.listen(PORT, () => {
   console.log(`[Sentra Core API] REST escuchando en http://localhost:${PORT}/api`);
@@ -600,6 +737,7 @@ async function shutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
   clearInterval(bioTickInterval);
+  clearInterval(performanceInterval);
 
   for (const client of clients) {
     client.close();

@@ -15,6 +15,7 @@ export type TCREIAction =
   | 'authenticate_device' | 'deploy_bacteria' | 'vaccinate_port'
   | 'get_sync_status' | 'set_sync_transport'
   | 'connect_bluetooth' | 'disconnect_bluetooth'
+  | 'get_plugins' | 'attach_plugin' | 'activate_plugin' | 'deactivate_plugin' | 'detach_plugin'
   | 'telemetry' | 'operator_action';
 
 export interface TCREIMessage {

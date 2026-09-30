@@ -8,7 +8,7 @@ export type GuardianState = 'dormant' | 'active' | 'alert' | 'quarantine';
 
 export interface GuardianAlert {
   id: string;
-  type: 'usb_unknown' | 'usb_blocked' | 'chain_tamper' | 'chain_corrupt' | 'auth_failed';
+  type: 'usb_unknown' | 'usb_blocked' | 'chain_tamper' | 'chain_corrupt' | 'auth_failed' | 'sensor_correlation';
   severity: 'low' | 'medium' | 'high' | 'critical';
   message: string;
   timestamp: number;
@@ -35,7 +35,7 @@ export class BacterialGuardian {
   private state: GuardianState = 'dormant';
   private alerts: GuardianAlert[] = [];
   private listeners: Set<GuardianListener> = new Set();
-  private chainCheckInterval: number | null = null;
+  private chainCheckInterval: ReturnType<typeof setInterval> | null = null;
   private chainIntervalMs = CHAIN_CHECK_INTERVAL_MS;
   private lastChainValid = true;
   private lastChainCheck: number | null = null;
@@ -75,7 +75,7 @@ export class BacterialGuardian {
   private startChainMonitoring(): void {
     if (this.monitoringChain) return;
     this.monitoringChain = true;
-    this.chainCheckInterval = window.setInterval(() => this.checkChain(), this.chainIntervalMs);
+    this.chainCheckInterval = setInterval(() => this.checkChain(), this.chainIntervalMs);
   }
 
   private stopChainMonitoring(): void {
@@ -162,6 +162,16 @@ export class BacterialGuardian {
       this.notify();
       return false;
     }
+  }
+
+  reportSensorCorrelation(ruleId: string, signalTypes: string[]): void {
+    this.addAlert(
+      'sensor_correlation',
+      'critical',
+      `Patrón crítico correlacionado (${ruleId}): ${signalTypes.join(', ')}`,
+    );
+    this.enterQuarantine();
+    this.notify();
   }
 
   private enterQuarantine(): void {
