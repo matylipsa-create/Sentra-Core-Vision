@@ -1,4 +1,5 @@
 import { offlineQueueStorage, type TCREICommand } from './OfflineQueueStorage';
+import { API_TOKEN_CHANGED_EVENT, getApiToken } from './ApiSession';
 
 export type BusConnectionStatus = 'ONLINE' | 'OFFLINE' | 'RECONNECTING';
 
@@ -48,8 +49,10 @@ export class ResilientTCREIBus {
   private reconnectTimer: number | null = null;
   private pingTimer: number | null = null;
   private ackTimer: number | null = null;
+  private authTimer: number | null = null;
   private retryDelay = RETRY_INITIAL_MS;
   private stopped = true;
+  private authRejected = false;
   private pingRequest: { id: string; startedAt: number } | null = null;
   private sendingEntryId: number | null = null;
   private sendingMessageId: string | null = null;
@@ -68,6 +71,7 @@ export class ResilientTCREIBus {
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
+    window.addEventListener(API_TOKEN_CHANGED_EVENT, this.handleTokenChange);
     if (!resolveBusUrl()) {
       this.update({ status: 'OFFLINE', message: 'Configura VITE_SENTRA_WS_URL para conectar el bus remoto.' });
       return;
@@ -78,9 +82,11 @@ export class ResilientTCREIBus {
 
   stop(): void {
     this.stopped = true;
+    window.removeEventListener(API_TOKEN_CHANGED_EVENT, this.handleTokenChange);
     this.clearTimer('reconnectTimer');
     this.clearTimer('pingTimer');
     this.clearTimer('ackTimer');
+    this.clearTimer('authTimer');
     this.pingRequest = null;
     this.sendingEntryId = null;
     this.sendingMessageId = null;
@@ -105,6 +111,10 @@ export class ResilientTCREIBus {
 
   private connect(): void {
     if (this.stopped) return;
+    if (!getApiToken()) {
+      this.update({ status: 'OFFLINE', message: 'Configura el token del backend en Ajustes > API.' });
+      return;
+    }
     const url = resolveBusUrl();
     if (!url) return;
     this.update({ status: 'RECONNECTING', message: 'Conectando al bus TCREI...' });
@@ -117,14 +127,17 @@ export class ResilientTCREIBus {
       return;
     }
     this.socket = socket;
+    this.authRejected = false;
 
     socket.onopen = () => {
       if (this.socket !== socket || this.stopped) return;
-      this.retryDelay = RETRY_INITIAL_MS;
-      this.update({ status: 'ONLINE', message: `Conectado a ${url}` });
-      this.ping();
-      this.pingTimer = window.setInterval(() => this.ping(), PING_INTERVAL_MS);
-      void this.flushOutbox();
+      const token = getApiToken();
+      if (!token) {
+        socket.close();
+        return;
+      }
+      socket.send(JSON.stringify({ type: 'auth', token }));
+      this.authTimer = window.setTimeout(() => socket.close(), ACK_TIMEOUT_MS);
     };
 
     socket.onmessage = (event) => {
@@ -138,11 +151,15 @@ export class ResilientTCREIBus {
       this.socket = null;
       this.clearTimer('pingTimer');
       this.clearTimer('ackTimer');
+      this.clearTimer('authTimer');
       this.pingRequest = null;
       this.sendingEntryId = null;
       this.sendingMessageId = null;
       this.update({ status: 'RECONNECTING', rttMs: null, message: 'Bus desconectado; reintentando conexión.' });
-      this.scheduleReconnect();
+      if (this.authRejected) {
+        this.authRejected = false;
+        this.update({ status: 'OFFLINE', message: 'El token del backend fue rechazado.' });
+      } else this.scheduleReconnect();
     };
   }
 
@@ -152,6 +169,22 @@ export class ResilientTCREIBus {
       message = JSON.parse(raw) as ServerMessage;
     } catch {
       this.update({ message: 'Se recibió un mensaje de bus no válido.' });
+      return;
+    }
+
+    if (message.type === 'auth') {
+      this.clearTimer('authTimer');
+      if (message.ok !== true) {
+        this.authRejected = true;
+        this.update({ status: 'OFFLINE', message: 'El token del backend fue rechazado.' });
+        this.socket?.close();
+        return;
+      }
+      this.retryDelay = RETRY_INITIAL_MS;
+      this.update({ status: 'ONLINE', message: 'Sesión autenticada con el bus TCREI.' });
+      this.ping();
+      this.pingTimer = window.setInterval(() => this.ping(), PING_INTERVAL_MS);
+      void this.flushOutbox();
       return;
     }
 
@@ -239,6 +272,19 @@ export class ResilientTCREIBus {
     }, delay);
   }
 
+  private handleTokenChange = (): void => {
+    if (this.stopped) return;
+    this.clearTimer('reconnectTimer');
+    this.clearTimer('pingTimer');
+    this.clearTimer('ackTimer');
+    this.clearTimer('authTimer');
+    const socket = this.socket;
+    this.socket = null;
+    socket?.close();
+    if (getApiToken()) this.connect();
+    else this.update({ status: 'OFFLINE', message: 'Configura el token del backend en Ajustes > API.' });
+  };
+
   private async refreshQueueCount(): Promise<void> {
     try {
       this.update({ queuedCount: await offlineQueueStorage.count() });
@@ -252,7 +298,7 @@ export class ResilientTCREIBus {
     for (const listener of this.listeners) listener(this.snapshot);
   }
 
-  private clearTimer(key: 'reconnectTimer' | 'pingTimer' | 'ackTimer'): void {
+  private clearTimer(key: 'reconnectTimer' | 'pingTimer' | 'ackTimer' | 'authTimer'): void {
     const timer = this[key];
     if (timer === null) return;
     if (key === 'pingTimer') window.clearInterval(timer);

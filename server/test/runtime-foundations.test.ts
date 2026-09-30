@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import 'fake-indexeddb/auto';
 import { ComplexEventProcessor } from '../../src/core/ComplexEventProcessor.js';
+import { EVOLIS } from '../../src/core/EVOLIS.js';
 import { HotPlugRegistry } from '../../src/core/HotPlugRegistry.js';
+import {
+  createAirGapAcknowledgementChunks,
+  exportAirGapDelta,
+  importAirGapAcknowledgement,
+  importAirGapDelta,
+  joinAirGapChunks,
+} from '../../src/services/AirGapSyncTransport.js';
+import { StorageService } from '../../src/services/StorageService.js';
 
 test('CEP requires distinct critical sources within its time window', () => {
   const processor = new ComplexEventProcessor();
@@ -51,4 +61,64 @@ test('hot-plug loader activates, deactivates, and detaches a plugin', async () =
   assert.deepEqual(lifecycle, ['active', 'inactive']);
   assert.deepEqual(registry.list(), []);
   await assert.rejects(registry.activate('telemetry', undefined), /Plugin not registered/);
+});
+
+test('air-gap delta encrypts, chunks, verifies EVOLIS, and imports to an isolated node', async () => {
+  const suffix = crypto.randomUUID();
+  const sourceStorage = new StorageService(`airgap-source-${suffix}`);
+  const receiverStorage = new StorageService(`airgap-receiver-${suffix}`);
+  const source = new EVOLIS();
+  const evidence: Awaited<ReturnType<EVOLIS['record']>>[] = [];
+  let keyPair: { publicKey: string; privateKey: string } | undefined;
+  source.setPersistenceAdapter({
+    loadKeyPair: async () => keyPair,
+    saveKeyPair: async (created) => { keyPair = created; },
+    saveEvidence: async (entry) => { evidence.push(entry); },
+  });
+  await source.record('vision', 'detection', JSON.stringify({ label: 'person' }));
+  await source.record('telemetry', 'sample', JSON.stringify({ temperature: 22 }));
+  for (const entry of evidence) await sourceStorage.saveEvidence(entry);
+
+  const passphrase = 'air-gap-integration-passphrase';
+  const chunks = await exportAirGapDelta(sourceStorage, 'receiver-node', 'source-node', passphrase, 1024);
+  assert.ok(chunks.length > 1);
+
+  await assert.rejects(
+    importAirGapDelta(receiverStorage, chunks, 'source-node', 'wrong-air-gap-passphrase'),
+    /authentication failed/,
+  );
+  assert.equal((await receiverStorage.getSyncedEvidence()).length, 0);
+
+  const corrupted = chunks.map((chunk) => ({ ...chunk }));
+  corrupted[0].data = `${corrupted[0].data.slice(0, -4)}AAAA`;
+  await assert.rejects(importAirGapDelta(receiverStorage, corrupted, 'source-node', passphrase));
+  assert.equal((await receiverStorage.getSyncedEvidence()).length, 0);
+
+  const result = await importAirGapDelta(receiverStorage, [...chunks].reverse(), 'source-node', passphrase);
+  assert.equal(result.appliedThrough, 1);
+  assert.equal((await receiverStorage.getSyncedEvidence('source-node')).length, 2);
+  assert.equal((await receiverStorage.loadSyncCursor('source-node'))?.lastHash, result.endingHash);
+
+  const acknowledgementChunks = await createAirGapAcknowledgementChunks(result, 'receiver-node', passphrase);
+  const acknowledgementPackage = await joinAirGapChunks(acknowledgementChunks);
+  await assert.rejects(
+    importAirGapAcknowledgement(sourceStorage, acknowledgementPackage, 'wrong-peer', passphrase),
+    /different peer/,
+  );
+  await assert.rejects(
+    sourceStorage.acknowledgeEvidenceDelta('receiver-node', 'source-node', 1, '0'.repeat(64)),
+    /does not match the local evidence chain/,
+  );
+  assert.equal(await sourceStorage.loadSyncCursor('receiver-node', 'outbound'), undefined);
+  await importAirGapAcknowledgement(
+    sourceStorage,
+    acknowledgementPackage,
+    'receiver-node',
+    passphrase,
+  );
+  const thirdEvidence = await source.record('telemetry', 'sample', JSON.stringify({ temperature: 23 }));
+  await sourceStorage.saveEvidence(thirdEvidence);
+  const nextDelta = await sourceStorage.exportEvidenceDeltaForPeer('receiver-node', 'source-node');
+  assert.deepEqual(nextDelta.entries.map((entry) => entry.entry.index), [2]);
+  assert.equal(await source.verify(), true);
 });

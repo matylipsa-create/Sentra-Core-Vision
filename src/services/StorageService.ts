@@ -46,9 +46,11 @@ const MAX_DELTA_ENTRIES = 500;
 export class StorageService {
   private db: IDBPDatabase<SentraDB> | null = null;
 
+  constructor(private readonly databaseName = DB_NAME) {}
+
   async init(): Promise<void> {
     if (this.db) return;
-    this.db = await openDatabase<SentraDB>(DB_NAME, DB_VERSION, (db) => {
+    this.db = await openDatabase<SentraDB>(this.databaseName, DB_VERSION, (db) => {
       if (!db.objectStoreNames.contains('evolis')) db.createObjectStore('evolis', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('evolis_keys')) db.createObjectStore('evolis_keys');
       if (!db.objectStoreNames.contains('state')) db.createObjectStore('state');
@@ -191,20 +193,41 @@ export class StorageService {
     return expectedIndex;
   }
 
-  async acknowledgeEvidenceDelta(peerId: string, batch: EvidenceDeltaBatch): Promise<void> {
-    const evidence = batch.entries.at(-1);
-    if (!peerId || !batch.sourceId || !evidence || evidence.entry.hash !== batch.endingHash) {
+  async acknowledgeEvidenceDelta(peerId: string, sourceId: string, lastIndex: number, lastHash: string): Promise<void> {
+    if (!peerId || !sourceId || !Number.isInteger(lastIndex) || lastIndex < 0) {
       throw new Error('Invalid evidence delta acknowledgement');
     }
     const previous = await this.loadSyncCursor(peerId, 'outbound');
-    if (previous && previous.sourceId !== batch.sourceId) throw new Error('Sync cursor belongs to a different source');
-    if (previous && batch.toIndex < previous.lastIndex) throw new Error('Acknowledgement cursor cannot move backwards');
+    if (previous && previous.sourceId !== sourceId) throw new Error('Sync cursor belongs to a different source');
+    if (previous && lastIndex < previous.lastIndex) throw new Error('Acknowledgement cursor cannot move backwards');
+
+    const entries = (await this.getAllEvidence()).sort((a, b) => a.entry.index - b.entry.index);
+    const acknowledgedEntry = entries.find(({ entry }) => entry.index === lastIndex);
+    if (!acknowledgedEntry || acknowledgedEntry.entry.hash !== lastHash) {
+      throw new Error('Acknowledgement does not match the local evidence chain');
+    }
+    const chain = entries.filter(({ entry }) => entry.index <= lastIndex).map(({ entry }) => entry);
+    let previousHash = GENESIS_HASH;
+    for (let index = 0; index < chain.length; index++) {
+      const entry = chain[index];
+      if (entry.index !== index || entry.previousHash !== previousHash) {
+        throw new Error(`Local evidence chain is discontinuous at index ${index}`);
+      }
+      const composite = `${entry.index}:${entry.previousHash}:${entry.timestamp}:${entry.data}`;
+      if (await sha256(composite) !== entry.hash) throw new Error(`Invalid local evidence hash at index ${index}`);
+      const evidence = entries.find((candidate) => candidate.entry.index === index);
+      const signedMessage = `${entry.index}:${entry.hash}:${entry.previousHash}`;
+      if (!evidence || !await ecdsaVerify(signedMessage, evidence.signature, evidence.signature.publicKey)) {
+        throw new Error(`Invalid local evidence signature at index ${index}`);
+      }
+      previousHash = entry.hash;
+    }
     await this.saveSyncCursor({
       peerId,
-      sourceId: batch.sourceId,
+      sourceId,
       direction: 'outbound',
-      lastIndex: batch.toIndex,
-      lastHash: batch.endingHash,
+      lastIndex,
+      lastHash,
       updatedAt: Date.now(),
     });
   }

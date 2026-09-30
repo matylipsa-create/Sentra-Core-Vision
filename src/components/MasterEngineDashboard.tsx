@@ -5,6 +5,14 @@ import { initOCR, recognizeText, terminateOCR } from '../services/OCREngine';
 import { ResilientTCREIBus } from '../services/ResilientTCREIBus';
 import { downloadAuditReport, type AuditFormat } from '../services/AuditReportExporter';
 import { downloadImprovementReport, generarInformeMejoras, type ImprovementFormat } from '../services/ImprovementReport';
+import {
+  downloadAirGapAcknowledgementFile,
+  downloadAirGapDeltaFile,
+  getAirGapSourceId,
+  importAirGapAcknowledgementFile,
+  importAirGapDeltaFile,
+  type AirGapImportResult,
+} from '../services/AirGapSyncTransport';
 import { playInterfaceCue } from '../lib/engineSound';
 
 type ConnectionStatus = 'ONLINE' | 'OFFLINE' | 'RECONNECTING';
@@ -91,6 +99,11 @@ export function MasterEngineDashboard() {
   const [improvementStatus, setImprovementStatus] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingImprovements, setIsExportingImprovements] = useState(false);
+  const [airGapPeerId, setAirGapPeerId] = useState('');
+  const [airGapPassphrase, setAirGapPassphrase] = useState('');
+  const [isSyncingAirGap, setIsSyncingAirGap] = useState(false);
+  const [airGapStatus, setAirGapStatus] = useState('');
+  const [lastAirGapImport, setLastAirGapImport] = useState<AirGapImportResult | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -262,6 +275,74 @@ export function MasterEngineDashboard() {
     }
   }, []);
 
+  const handleAirGapExport = useCallback(async () => {
+    setIsSyncingAirGap(true);
+    setAirGapStatus('Cifrando y preparando el paquete...');
+    try {
+      const count = await downloadAirGapDeltaFile(
+        storageService,
+        airGapPeerId.trim(),
+        getAirGapSourceId(),
+        airGapPassphrase,
+      );
+      setAirGapStatus(`Paquete exportado en ${count} bloques cifrados.`);
+    } catch (syncError) {
+      setAirGapStatus(syncError instanceof Error ? syncError.message : 'No se pudo exportar el paquete.');
+    } finally {
+      setIsSyncingAirGap(false);
+    }
+  }, [airGapPassphrase, airGapPeerId]);
+
+  const handleAirGapImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsSyncingAirGap(true);
+    setAirGapStatus('Verificando y aplicando el delta...');
+    try {
+      const result = await importAirGapDeltaFile(storageService, file, airGapPassphrase);
+      setLastAirGapImport(result);
+      setAirGapStatus(`Cadena ${result.sourceId} importada hasta ${result.appliedThrough}.`);
+    } catch (syncError) {
+      setAirGapStatus(syncError instanceof Error ? syncError.message : 'No se pudo importar el paquete.');
+    } finally {
+      setIsSyncingAirGap(false);
+      event.target.value = '';
+    }
+  }, [airGapPassphrase]);
+
+  const handleAirGapAcknowledgementExport = useCallback(async () => {
+    if (!lastAirGapImport) return;
+    setIsSyncingAirGap(true);
+    try {
+      const count = await downloadAirGapAcknowledgementFile(lastAirGapImport, getAirGapSourceId(), airGapPassphrase);
+      setAirGapStatus(`Acuse exportado en ${count} bloques cifrados.`);
+    } catch (syncError) {
+      setAirGapStatus(syncError instanceof Error ? syncError.message : 'No se pudo exportar el acuse.');
+    } finally {
+      setIsSyncingAirGap(false);
+    }
+  }, [airGapPassphrase, lastAirGapImport]);
+
+  const handleAirGapAcknowledgementImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsSyncingAirGap(true);
+    try {
+      const acknowledgement = await importAirGapAcknowledgementFile(
+        storageService,
+        file,
+        airGapPeerId.trim(),
+        airGapPassphrase,
+      );
+      setAirGapStatus(`Acuse verificado; cursor ${acknowledgement.lastIndex} confirmado para ${acknowledgement.recipientId}.`);
+    } catch (syncError) {
+      setAirGapStatus(syncError instanceof Error ? syncError.message : 'No se pudo importar el acuse.');
+    } finally {
+      setIsSyncingAirGap(false);
+      event.target.value = '';
+    }
+  }, [airGapPassphrase, airGapPeerId]);
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 bg-[#07100e] px-4 pb-6 pt-16 font-mono text-[#d5e8df] sm:px-6 sm:py-6">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#00d4a0]/25 pb-4">
@@ -321,6 +402,37 @@ export function MasterEngineDashboard() {
             {auditStatus && <p className="mt-2 text-[10px] text-[#8de0b8]" role="status" aria-live="polite">{auditStatus}</p>}
           </div>
         </div>
+      </section>
+
+      <section className="border border-[#00d4a0]/20 bg-[#0b1713] p-4" aria-labelledby="airgap-sync-title">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#00d4a0]/15 pb-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[#789788]">AES-256-GCM · PBKDF2-SHA-256</p>
+            <h2 id="airgap-sync-title" className="mt-1 text-sm font-semibold text-[#aaffdf]">Intercambio air-gapped EVOLIS</h2>
+          </div>
+          <span className="text-[10px] text-[#789788]">Nodo {getAirGapSourceId().slice(0, 8)}</span>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="text-[10px] text-[#83a999]" htmlFor="airgap-peer-id">ID del nodo receptor
+            <input id="airgap-peer-id" value={airGapPeerId} onChange={(event) => setAirGapPeerId(event.target.value)} autoComplete="off" className="mt-1 min-h-10 w-full border border-[#00d4a0]/20 bg-black/40 px-2 text-xs text-[#d5e8df] outline-none focus-visible:ring-2 focus-visible:ring-[#00d4a0]" />
+          </label>
+          <label className="text-[10px] text-[#83a999]" htmlFor="airgap-passphrase">Frase de intercambio (mínimo 12 caracteres)
+            <input id="airgap-passphrase" type="password" autoComplete="new-password" value={airGapPassphrase} onChange={(event) => setAirGapPassphrase(event.target.value)} className="mt-1 min-h-10 w-full border border-[#00d4a0]/20 bg-black/40 px-2 text-xs text-[#d5e8df] outline-none focus-visible:ring-2 focus-visible:ring-[#00d4a0]" />
+          </label>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => void handleAirGapExport()} disabled={isSyncingAirGap || airGapPeerId.trim().length === 0 || airGapPassphrase.length < 12} className="min-h-10 border border-[#00d4a0]/35 px-3 text-[10px] text-[#aaffdf] hover:bg-[#00d4a0]/10 disabled:opacity-40">EXPORTAR DELTA CIFRADO</button>
+          <label className={`flex min-h-10 cursor-pointer items-center border border-[#00d4a0]/35 px-3 text-[10px] text-[#aaffdf] hover:bg-[#00d4a0]/10 ${isSyncingAirGap || airGapPassphrase.length < 12 ? 'pointer-events-none opacity-40' : ''}`}>
+            IMPORTAR PAQUETE
+            <input type="file" accept="application/vnd.sentra.airgap+json,.json" disabled={isSyncingAirGap || airGapPassphrase.length < 12} onChange={(event) => void handleAirGapImport(event)} className="sr-only" />
+          </label>
+          {lastAirGapImport && <button type="button" onClick={() => void handleAirGapAcknowledgementExport()} disabled={isSyncingAirGap || airGapPassphrase.length < 12} className="min-h-10 border border-amber-300/30 px-3 text-[10px] text-amber-100 hover:bg-amber-300/10 disabled:opacity-40">EXPORTAR ACUSE</button>}
+          <label className={`flex min-h-10 cursor-pointer items-center border border-amber-300/30 px-3 text-[10px] text-amber-100 hover:bg-amber-300/10 ${isSyncingAirGap || airGapPassphrase.length < 12 || airGapPeerId.trim().length === 0 ? 'pointer-events-none opacity-40' : ''}`}>
+            IMPORTAR ACUSE
+            <input type="file" accept="application/vnd.sentra.airgap+json,.json" disabled={isSyncingAirGap || airGapPassphrase.length < 12 || airGapPeerId.trim().length === 0} onChange={(event) => void handleAirGapAcknowledgementImport(event)} className="sr-only" />
+          </label>
+        </div>
+        {airGapStatus && <p className="mt-2 break-words text-[10px] text-[#8de0b8]" role="status" aria-live="polite">{airGapStatus}</p>}
       </section>
 
       <section className="border border-[#00d4a0]/20 bg-[#0b1713] p-4" aria-labelledby="improvement-report-title">

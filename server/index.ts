@@ -3,6 +3,7 @@ import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
 import { cpus } from 'node:os';
 import { performance } from 'node:perf_hooks';
+import { timingSafeEqual } from 'node:crypto';
 import { TCREIMessage, makeResponse, makeEvent, parseMessage } from './tcrei-protocol.js';
 
 // Motor imports
@@ -25,6 +26,9 @@ import {
 } from './PluginHost.js';
 
 const PORT = parseInt(process.env.SENTRA_PORT ?? '8080', 10);
+const API_TOKEN = process.env.SENTRA_API_TOKEN ?? process.env.SENTRA_PLUGIN_CONTROL_TOKEN ?? '';
+if (!API_TOKEN) throw new Error('SENTRA_API_TOKEN (or SENTRA_PLUGIN_CONTROL_TOKEN) is required');
+const API_TOKEN_BYTES = Buffer.from(API_TOKEN);
 
 // ─── State ──────────────────────────────────────────────
 
@@ -378,6 +382,7 @@ const handlers: Record<string, Handler> = {
 
 const wss = new WebSocketServer({ noServer: true });
 const clients = new Set<WebSocket>();
+const allConnections = new Set<WebSocket>();
 const websocketRtt = new Map<WebSocket, number>();
 const websocketPingStartedAt = new WeakMap<WebSocket, number>();
 const configuredCorsOrigins = new Set(
@@ -395,6 +400,17 @@ function isAllowedOrigin(origin: string): boolean {
   }
 }
 
+function isValidToken(token: unknown): boolean {
+  if (typeof token !== 'string') return false;
+  const tokenBytes = Buffer.from(token);
+  return tokenBytes.length === API_TOKEN_BYTES.length && timingSafeEqual(tokenBytes, API_TOKEN_BYTES);
+}
+
+function hasBearerToken(header: string | undefined): boolean {
+  const match = /^Bearer ([^\s]+)$/.exec(header ?? '');
+  return Boolean(match && isValidToken(match[1]));
+}
+
 function broadcast(data: unknown): void {
   const msg = JSON.stringify(data);
   for (const ws of clients) {
@@ -402,17 +418,65 @@ function broadcast(data: unknown): void {
   }
 }
 
-wss.on('connection', (ws) => {
-  clients.add(ws);
+wss.on('connection', (ws, request) => {
+  allConnections.add(ws);
+  let authenticated = hasBearerToken(request.headers.authorization);
+  let authTimer: ReturnType<typeof setTimeout> | null = null;
+  const markAuthenticated = () => {
+    if (authenticated) return;
+    authenticated = true;
+    if (authTimer) clearTimeout(authTimer);
+    authTimer = null;
+    clients.add(ws);
+    ws.send(JSON.stringify(makeEvent('connection.status', { connected: true })));
+  };
+
+  if (authenticated) {
+    clients.add(ws);
+    ws.send(JSON.stringify(makeEvent('connection.status', { connected: true })));
+  } else {
+    authTimer = setTimeout(() => ws.close(4401, 'Authentication required'), 5000);
+  }
+
   ws.on('pong', () => {
     const startedAt = websocketPingStartedAt.get(ws);
     if (startedAt !== undefined) websocketRtt.set(ws, Math.round(performance.now() - startedAt));
   });
 
   ws.on('message', async (raw) => {
+    let envelope: unknown;
+    try {
+      envelope = JSON.parse(raw.toString());
+    } catch {
+      ws.send(JSON.stringify(makeResponse('unknown', false, undefined, 'Invalid message format')));
+      return;
+    }
+
+    if (!authenticated && envelope && typeof envelope === 'object' && 'type' in envelope
+      && envelope.type === 'auth') {
+      const authEnvelope = envelope as { token?: unknown };
+      if (!isValidToken(authEnvelope.token)) {
+        ws.send(JSON.stringify({ type: 'auth', ok: false, error: 'Unauthorized' }));
+        ws.close(4401, 'Unauthorized');
+        return;
+      }
+      markAuthenticated();
+      ws.send(JSON.stringify({ type: 'auth', ok: true }));
+      return;
+    }
+
     const msg = parseMessage(raw.toString());
     if (!msg) {
       ws.send(JSON.stringify(makeResponse('unknown', false, undefined, 'Invalid message format')));
+      return;
+    }
+    const isPublicQuery = msg.type === 'query' && ['get_status', 'get_modules'].includes(msg.action);
+    if (!authenticated && !isPublicQuery) {
+      ws.send(JSON.stringify(makeResponse(msg.id, false, undefined, 'Unauthorized')));
+      return;
+    }
+    if (!authenticated && msg.action === 'get_status') {
+      ws.send(JSON.stringify(makeResponse(msg.id, true, { status: 'ok' })));
       return;
     }
     const key = `${msg.type}:${msg.action}`;
@@ -431,11 +495,12 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    if (authTimer) clearTimeout(authTimer);
+    allConnections.delete(ws);
     clients.delete(ws);
     websocketRtt.delete(ws);
   });
 
-  ws.send(JSON.stringify(makeEvent('connection.status', { connected: true })));
 });
 
 // ─── Guardian event forwarding ──────────────────────────
@@ -452,7 +517,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
   if (origin && isAllowedOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   }
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -477,17 +542,18 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
     res.end(JSON.stringify(data));
   };
 
+  const publicRoute = req.method === 'GET' && (route === 'status' || route === 'modules');
+  if (!publicRoute && !hasBearerToken(req.headers.authorization)) {
+    res.setHeader('WWW-Authenticate', 'Bearer realm="Sentra Core"');
+    sendJson(401, { error: 'Unauthorized' });
+    return;
+  }
+
   try {
     if (route === 'status' && req.method === 'GET') {
       sendJson(200, {
-        activeModule: state.activeModule,
-        voiceEnabled: state.voiceEnabled,
-        humanVeto: state.humanVeto,
-        powerMode: state.powerMode,
+        status: 'ok',
         evidenceCount: evolis.getEntries().length,
-        bioState: bioSoftware.getState(),
-        guardianState: bacterialGuardian.getStatus().state,
-        modules: moduleManager.getAllModules(),
       });
       return;
     }
@@ -661,6 +727,11 @@ httpServer.on('upgrade', (request, socket, head) => {
     socket.destroy();
     return;
   }
+  if (request.headers.authorization && !hasBearerToken(request.headers.authorization)) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Bearer\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
   wss.handleUpgrade(request, socket, head, (webSocket) => {
     wss.emit('connection', webSocket, request);
   });
@@ -739,10 +810,11 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(bioTickInterval);
   clearInterval(performanceInterval);
 
-  for (const client of clients) {
+  for (const client of allConnections) {
     client.close();
   }
   clients.clear();
+  allConnections.clear();
 
   await new Promise<void>((resolve) => {
     wss.close(() => resolve());
