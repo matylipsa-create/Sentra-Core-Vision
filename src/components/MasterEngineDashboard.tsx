@@ -4,6 +4,7 @@ import { storageService } from '../services/StorageService';
 import { initOCR, recognizeText, terminateOCR } from '../services/OCREngine';
 import { ResilientTCREIBus } from '../services/ResilientTCREIBus';
 import { downloadAuditReport, type AuditFormat } from '../services/AuditReportExporter';
+import { downloadImprovementReport, generarInformeMejoras, type ImprovementFormat } from '../services/ImprovementReport';
 import { playInterfaceCue } from '../lib/engineSound';
 
 type ConnectionStatus = 'ONLINE' | 'OFFLINE' | 'RECONNECTING';
@@ -58,6 +59,7 @@ class SentraPriorityQueue {
 }
 
 export function MasterEngineDashboard() {
+  const [improvementReport] = useState(generarInformeMejoras);
   const [bus] = useState(() => new ResilientTCREIBus());
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -74,7 +76,9 @@ export function MasterEngineDashboard() {
   const [isVisionActive, setIsVisionActive] = useState(false);
   const [snapshotStatus, setSnapshotStatus] = useState('');
   const [auditStatus, setAuditStatus] = useState('');
+  const [improvementStatus, setImprovementStatus] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingImprovements, setIsExportingImprovements] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -226,6 +230,22 @@ export function MasterEngineDashboard() {
     }
   }, []);
 
+  const handleImprovementExport = useCallback((format: ImprovementFormat) => {
+    setIsExportingImprovements(true);
+    setError('');
+    try {
+      downloadImprovementReport(format);
+      setImprovementStatus(`Reporte de mejoras ${format.toUpperCase()} exportado.`);
+      playInterfaceCue('confirm');
+    } catch (exportError) {
+      console.error('[MasterEngineDashboard] Error exportando mejoras:', exportError);
+      setImprovementStatus('');
+      setError('No se pudo exportar el reporte de mejoras.');
+    } finally {
+      setIsExportingImprovements(false);
+    }
+  }, []);
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 bg-[#07100e] px-4 pb-6 pt-16 font-mono text-[#d5e8df] sm:px-6 sm:py-6">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#00d4a0]/25 pb-4">
@@ -278,6 +298,34 @@ export function MasterEngineDashboard() {
             {auditStatus && <p className="mt-2 text-[10px] text-[#8de0b8]" role="status" aria-live="polite">{auditStatus}</p>}
           </div>
         </div>
+      </section>
+
+      <section className="border border-[#00d4a0]/20 bg-[#0b1713] p-4" aria-labelledby="improvement-report-title">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#00d4a0]/15 pb-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-[#789788]">{improvementReport.modulo} · v{improvementReport.version}</p>
+            <h2 id="improvement-report-title" className="mt-1 text-sm font-semibold text-[#aaffdf]">Reporte de mejoras propuestas</h2>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => handleImprovementExport('json')} disabled={isExportingImprovements} className="min-h-10 border border-[#00d4a0]/30 px-3 py-2 text-[10px] text-[#aaffdf] transition hover:bg-[#00d4a0]/10 disabled:opacity-50">JSON</button>
+            <button type="button" onClick={() => handleImprovementExport('csv')} disabled={isExportingImprovements} className="min-h-10 border border-[#00d4a0]/30 px-3 py-2 text-[10px] text-[#aaffdf] transition hover:bg-[#00d4a0]/10 disabled:opacity-50">CSV</button>
+          </div>
+        </div>
+        <ul className="divide-y divide-[#00d4a0]/10">
+          {improvementReport.recomendaciones.map(({ categoria, descripcion, accionSugerida, prioridad }) => (
+            <li key={categoria} className="grid gap-2 py-3 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xs font-semibold text-[#c1ffe8]">{categoria}</h3>
+                  <span className={`border px-2 py-1 text-[9px] uppercase ${prioridad === 'Alta' ? 'border-rose-400/40 bg-rose-950/30 text-rose-200' : prioridad === 'Media' ? 'border-amber-400/40 bg-amber-950/30 text-amber-200' : 'border-[#00d4a0]/30 text-[#aaffdf]'}`}>{prioridad}</span>
+                </div>
+                <p className="mt-1 text-[10px] leading-relaxed text-[#83a999]">{descripcion}</p>
+              </div>
+              <p className="text-[10px] leading-relaxed text-[#c6d9d0]">{accionSugerida}</p>
+            </li>
+          ))}
+        </ul>
+        {improvementStatus && <p className="mt-2 text-[10px] text-[#8de0b8]" role="status" aria-live="polite">{improvementStatus}</p>}
       </section>
 
       <footer className="border-t border-[#00d4a0]/15 pt-3 text-center text-[10px] text-[#789788]">
