@@ -38,6 +38,32 @@ void main() {
       expect(restored.type, msg.type);
       expect(restored.payload['command'], 'describir escena');
     });
+
+    test('telemetry frame preserves optional signature', () {
+      final msg = TCREIMessage.telemetry(
+        module: 'vision',
+        action: 'telemetry',
+        payload: {'signals': []},
+        signature: 'evolis-signature',
+      );
+      final restored = TCREIMessage.fromJson(msg.toJson());
+
+      expect(restored.type, TCREIMessageType.telemetry);
+      expect(restored.signature, 'evolis-signature');
+      expect(restored.timestamp, msg.timestamp);
+    });
+
+    test('auth frame uses the shared TCREI envelope', () {
+      final msg = TCREIMessage.auth('runtime-token');
+      final json = msg.toJson();
+
+      expect(json['type'], 'auth');
+      expect(json['module'], 'system');
+      expect(json['action'], 'authenticate');
+      expect(json['payload'], {'token': 'runtime-token'});
+      expect(json['id'], isNotEmpty);
+      expect(json['timestamp'], isA<int>());
+    });
   });
 
   group('TCREIResponse', () {
@@ -66,6 +92,19 @@ void main() {
       final resp = TCREIResponse.fromJson(json);
       expect(resp.ok, false);
       expect(resp.error, 'No handler for command:unknown');
+    });
+
+    test('parses TCREI ack into the response compatibility model', () {
+      final resp = TCREIResponse.fromJson({
+        'type': 'ack',
+        'id': 'telemetry-1',
+        'payload': {'ok': true, 'data': {'accepted': true}},
+        'timestamp': 1694123456789,
+      });
+
+      expect(resp.ok, true);
+      expect(resp.id, 'telemetry-1');
+      expect(resp.data, {'accepted': true});
     });
   });
 }

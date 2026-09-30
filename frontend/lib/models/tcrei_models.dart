@@ -1,6 +1,6 @@
 /// Modelos TCREI para la comunicacion con el backend Sentra Core.
 
-enum TCREIMessageType { command, query, event, response, error }
+enum TCREIMessageType { telemetry, command, event, auth, ack, query, response, error }
 
 enum TCREIEvent {
   perceptionUpdate,
@@ -22,6 +22,7 @@ class TCREIMessage {
   final Map<String, dynamic> payload;
   final int timestamp;
   final String id;
+  final String? signature;
 
   TCREIMessage({
     required this.type,
@@ -30,6 +31,7 @@ class TCREIMessage {
     required this.payload,
     required this.timestamp,
     required this.id,
+    this.signature,
   });
 
   Map<String, dynamic> toJson() => {
@@ -39,6 +41,7 @@ class TCREIMessage {
         'payload': payload,
         'timestamp': timestamp,
         'id': id,
+        if (signature != null) 'signature': signature,
       };
 
   factory TCREIMessage.fromJson(Map<String, dynamic> json) {
@@ -52,6 +55,7 @@ class TCREIMessage {
       payload: json['payload'] as Map<String, dynamic>? ?? {},
       timestamp: json['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch,
       id: json['id'] as String? ?? '',
+      signature: json['signature'] as String?,
     );
   }
 
@@ -85,6 +89,34 @@ class TCREIMessage {
     );
   }
 
+  static TCREIMessage telemetry({
+    required String module,
+    required String action,
+    Map<String, dynamic> payload = const {},
+    String? signature,
+  }) {
+    return TCREIMessage(
+      type: TCREIMessageType.telemetry,
+      module: module,
+      action: action,
+      payload: payload,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      id: _uuid(),
+      signature: signature,
+    );
+  }
+
+  static TCREIMessage auth(String token) {
+    return TCREIMessage(
+      type: TCREIMessageType.auth,
+      module: 'system',
+      action: 'authenticate',
+      payload: {'token': token},
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      id: _uuid(),
+    );
+  }
+
   static String _uuid() {
     return DateTime.now().microsecondsSinceEpoch.toRadixString(16) +
         (DateTime.now().millisecond).toRadixString(16);
@@ -107,11 +139,15 @@ class TCREIResponse {
   });
 
   factory TCREIResponse.fromJson(Map<String, dynamic> json) {
+    final ackPayload = json['payload'] is Map<String, dynamic>
+        ? json['payload'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    final isAck = json['type'] == 'ack';
     return TCREIResponse(
       id: json['id'] as String? ?? '',
-      ok: json['ok'] as bool? ?? false,
-      data: json['data'],
-      error: json['error'] as String?,
+      ok: (isAck ? ackPayload['ok'] : json['ok']) as bool? ?? false,
+      data: isAck ? ackPayload['data'] : json['data'],
+      error: (isAck ? ackPayload['error'] : json['error']) as String?,
       timestamp: json['timestamp'] as int? ?? 0,
     );
   }

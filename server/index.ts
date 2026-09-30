@@ -4,7 +4,7 @@ import { URL } from 'url';
 import { cpus } from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { timingSafeEqual } from 'node:crypto';
-import { TCREIMessage, makeResponse, makeEvent, parseMessage } from './tcrei-protocol.js';
+import { TCREIMessage, makeAck, makeAuthResult, makeResponse, makeEvent, parseMessage } from './tcrei-protocol.js';
 
 // Motor imports
 import { evolis } from '../src/core/EVOLIS.js';
@@ -461,14 +461,25 @@ wss.on('connection', (ws, request) => {
 
     if (!authenticated && envelope && typeof envelope === 'object' && 'type' in envelope
       && envelope.type === 'auth') {
-      const authEnvelope = envelope as { token?: unknown };
-      if (!isValidToken(authEnvelope.token)) {
-        ws.send(JSON.stringify({ type: 'auth', ok: false, error: 'Unauthorized' }));
+      const authEnvelope = envelope as Record<string, unknown>;
+      const authPayload = authEnvelope.payload;
+      const nestedToken = authPayload && typeof authPayload === 'object' && !Array.isArray(authPayload)
+        ? (authPayload as Record<string, unknown>).token
+        : undefined;
+      const token = authEnvelope.token ?? nestedToken;
+      const authId = typeof authEnvelope.id === 'string' ? authEnvelope.id : 'auth';
+      if ('payload' in authEnvelope && !parseMessage(raw.toString())) {
+        ws.send(JSON.stringify(makeAuthResult(authId, false, 'Invalid message format')));
+        ws.close(4400, 'Invalid message format');
+        return;
+      }
+      if (!isValidToken(token)) {
+        ws.send(JSON.stringify(makeAuthResult(authId, false, 'Unauthorized')));
         ws.close(4401, 'Unauthorized');
         return;
       }
       markAuthenticated();
-      ws.send(JSON.stringify({ type: 'auth', ok: true }));
+      ws.send(JSON.stringify(makeAuthResult(authId, true)));
       return;
     }
 
@@ -477,27 +488,32 @@ wss.on('connection', (ws, request) => {
       ws.send(JSON.stringify(makeResponse('unknown', false, undefined, 'Invalid message format')));
       return;
     }
+    const expectsAck = msg.type === 'command' || msg.type === 'telemetry';
+    const makeResult = (ok: boolean, data?: unknown, error?: string) => expectsAck
+      ? makeAck(msg.id, ok, data, error)
+      : makeResponse(msg.id, ok, data, error);
     const isPublicQuery = msg.type === 'query' && ['get_status', 'get_modules'].includes(msg.action);
     if (!authenticated && !isPublicQuery) {
-      ws.send(JSON.stringify(makeResponse(msg.id, false, undefined, 'Unauthorized')));
+      ws.send(JSON.stringify(makeResult(false, undefined, 'Unauthorized')));
       return;
     }
     if (!authenticated && msg.action === 'get_status') {
       ws.send(JSON.stringify(makeResponse(msg.id, true, { status: 'ok' })));
       return;
     }
-    const key = `${msg.type}:${msg.action}`;
+    const handlerType = msg.type === 'telemetry' ? 'command' : msg.type;
+    const key = `${handlerType}:${msg.action}`;
     const handler = handlers[key];
     if (!handler) {
-      ws.send(JSON.stringify(makeResponse(msg.id, false, undefined, `No handler for ${key}`)));
+      ws.send(JSON.stringify(makeResult(false, undefined, `No handler for ${key}`)));
       return;
     }
     try {
       const data = await handler(msg);
-      ws.send(JSON.stringify(makeResponse(msg.id, true, data)));
+      ws.send(JSON.stringify(makeResult(true, data)));
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      ws.send(JSON.stringify(makeResponse(msg.id, false, undefined, errorMsg)));
+      ws.send(JSON.stringify(makeResult(false, undefined, errorMsg)));
     }
   });
 

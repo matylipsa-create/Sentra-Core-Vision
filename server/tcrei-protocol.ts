@@ -1,4 +1,6 @@
-export type TCREIMessageType = 'command' | 'query' | 'event' | 'response' | 'error';
+export type TCREIMessageType =
+  | 'telemetry' | 'command' | 'event' | 'auth' | 'ack'
+  | 'query' | 'response' | 'error';
 
 export type TCREIModule =
   | 'vision' | 'seguridad' | 'movimiento' | 'juego'
@@ -20,17 +22,21 @@ export type TCREIAction =
 
 export interface TCREIMessage {
   type: TCREIMessageType;
-  module: TCREIModule | 'system';
-  action: TCREIAction;
+  module: string;
+  action: string;
   payload: Record<string, unknown>;
   timestamp: number;
   id: string;
+  signature?: string;
 }
 
 export interface TCREIResponse {
   type: 'response' | 'error';
   id: string;
   ok: boolean;
+  module: 'system';
+  action: 'response';
+  payload: { ok: boolean; data?: unknown; error?: string };
   data?: unknown;
   error?: string;
   timestamp: number;
@@ -40,14 +46,49 @@ export interface TCREIEvent {
   type: 'event';
   event: string;
   data: unknown;
+  module: TCREIMessage['module'];
+  action: string;
+  payload: Record<string, unknown>;
+  id: string;
   timestamp: number;
+  signature?: string;
+}
+
+export interface TCREIAck {
+  type: 'ack';
+  module: 'system';
+  action: 'ack';
+  payload: { ok: boolean; data?: unknown; error?: string };
+  timestamp: number;
+  id: string;
+  signature?: string;
+}
+
+export interface TCREIAuthResult {
+  type: 'auth';
+  module: 'system';
+  action: 'authenticate';
+  payload: { ok: boolean; error?: string };
+  timestamp: number;
+  id: string;
+  ok: boolean;
+  error?: string;
+}
+
+const MESSAGE_TYPES = new Set<TCREIMessageType>([
+  'telemetry', 'command', 'event', 'auth', 'ack', 'query', 'response', 'error',
+]);
+
+function createMessageId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
 }
 
 export function makeMessage(
-  module: TCREIMessage['module'],
-  action: TCREIAction,
+  module: string,
+  action: string,
   payload: Record<string, unknown> = {},
-  type: TCREIMessageType = 'command'
+  type: TCREIMessageType = 'command',
+  signature?: string,
 ): TCREIMessage {
   return {
     type,
@@ -55,7 +96,8 @@ export function makeMessage(
     action,
     payload,
     timestamp: Date.now(),
-    id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+    id: createMessageId(),
+    ...(signature === undefined ? {} : { signature }),
   };
 }
 
@@ -64,6 +106,13 @@ export function makeResponse(id: string, ok: boolean, data?: unknown, error?: st
     type: ok ? 'response' : 'error',
     id,
     ok,
+    module: 'system',
+    action: 'response',
+    payload: {
+      ok,
+      ...(data === undefined ? {} : { data }),
+      ...(error === undefined ? {} : { error }),
+    },
     data,
     error,
     timestamp: Date.now(),
@@ -71,24 +120,65 @@ export function makeResponse(id: string, ok: boolean, data?: unknown, error?: st
 }
 
 export function makeEvent(event: string, data: unknown): TCREIEvent {
+  const payload = data !== null && typeof data === 'object' && !Array.isArray(data)
+    ? data as Record<string, unknown>
+    : { value: data };
   return {
     type: 'event',
     event,
     data,
+    module: 'system',
+    action: event,
+    payload,
+    id: createMessageId(),
     timestamp: Date.now(),
+  };
+}
+
+export function makeAck(id: string, ok: boolean, data?: unknown, error?: string): TCREIAck {
+  return {
+    type: 'ack',
+    module: 'system',
+    action: 'ack',
+    payload: {
+      ok,
+      ...(data === undefined ? {} : { data }),
+      ...(error === undefined ? {} : { error }),
+    },
+    timestamp: Date.now(),
+    id,
+  };
+}
+
+export function makeAuthResult(id: string, ok: boolean, error?: string): TCREIAuthResult {
+  return {
+    type: 'auth',
+    module: 'system',
+    action: 'authenticate',
+    payload: { ok, ...(error === undefined ? {} : { error }) },
+    timestamp: Date.now(),
+    id,
+    ok,
+    ...(error === undefined ? {} : { error }),
   };
 }
 
 export function parseMessage(raw: string): TCREIMessage | null {
   try {
-    const obj = JSON.parse(raw);
+    const obj: unknown = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    const candidate = obj as Record<string, unknown>;
+    const payload = candidate.payload;
     if (
-      typeof obj.type === 'string' &&
-      typeof obj.module === 'string' &&
-      typeof obj.action === 'string' &&
-      typeof obj.id === 'string'
+      typeof candidate.type === 'string' && MESSAGE_TYPES.has(candidate.type as TCREIMessageType) &&
+      typeof candidate.module === 'string' && candidate.module.length > 0 &&
+      typeof candidate.action === 'string' && candidate.action.length > 0 &&
+      typeof candidate.id === 'string' && candidate.id.length > 0 &&
+      payload !== null && typeof payload === 'object' && !Array.isArray(payload) &&
+      typeof candidate.timestamp === 'number' && Number.isSafeInteger(candidate.timestamp) && candidate.timestamp >= 0 &&
+      (candidate.signature === undefined || typeof candidate.signature === 'string')
     ) {
-      return obj as TCREIMessage;
+      return candidate as unknown as TCREIMessage;
     }
   } catch {
     // invalid JSON

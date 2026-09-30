@@ -10,11 +10,15 @@ import '../models/tcrei_models.dart';
 /// Mantiene una conexion WebSocket persistente para eventos en tiempo real
 /// y un cliente HTTP para consultas REST puntuales.
 class SentraClient {
+  SentraClient({String? apiToken}) : _apiToken = apiToken?.trim();
+
   WebSocketChannel? _channel;
   StreamSubscription? _wsSub;
   bool _connected = false;
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
+  String? _apiToken;
+  bool _authRejected = false;
 
   final _responseController = StreamController<TCREIResponse>.broadcast();
   final _eventController = StreamController<TCREIEventData>.broadcast();
@@ -32,9 +36,22 @@ class SentraClient {
   /// Si esta conectado al backend.
   bool get isConnected => _connected;
 
+  /// Actualiza credenciales obtenidas desde almacenamiento seguro de la app.
+  void setApiToken(String? token) {
+    _apiToken = token?.trim();
+    _authRejected = false;
+    disconnect();
+    connect();
+  }
+
   /// Conectar al WebSocket del backend.
   void connect() {
     if (_channel != null) return;
+    if (!(_apiToken?.isNotEmpty ?? false)) {
+      _connected = false;
+      _connectionController.add(false);
+      return;
+    }
     try {
       _channel = WebSocketChannel.connect(
         Uri.parse(SentraConstants.wsUrl),
@@ -44,9 +61,12 @@ class SentraClient {
         onError: (error) => _onError(error),
         onDone: _onDone,
       );
-      _connected = true;
-      _reconnectAttempts = 0;
-      _connectionController.add(true);
+      if (_apiToken?.isNotEmpty ?? false) {
+        _channel!.sink.add(jsonEncode(TCREIMessage.auth(_apiToken!).toJson()));
+      } else {
+        _connected = false;
+        _connectionController.add(false);
+      }
     } catch (e) {
       _scheduleReconnect();
     }
@@ -71,8 +91,7 @@ class SentraClient {
 
   /// Enviar un comando y esperar la respuesta.
   Future<TCREIResponse> sendCommand(TCREIMessage message, {Duration timeout = const Duration(seconds: 10)}) {
-    send(message);
-    return responses
+    final response = responses
         .where((r) => r.id == message.id)
         .first
         .timeout(timeout, onTimeout: () => TCREIResponse(
@@ -81,6 +100,8 @@ class SentraClient {
               error: 'Timeout',
               timestamp: DateTime.now().millisecondsSinceEpoch,
             ));
+    send(message);
+    return response;
   }
 
   // ─── REST API ─────────────────────────────────────
@@ -104,14 +125,14 @@ class SentraClient {
   // ─── Internal ─────────────────────────────────────
 
   Future<Map<String, dynamic>> _get(String route) async {
-    final res = await http.get(Uri.parse('${SentraConstants.apiUrl}/$route'));
+    final res = await http.get(Uri.parse('${SentraConstants.apiUrl}/$route'), headers: _authHeaders());
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> _post(String route, Map<String, dynamic> body) async {
     final res = await http.post(
       Uri.parse('${SentraConstants.apiUrl}/$route'),
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', ..._authHeaders()},
       body: jsonEncode(body),
     );
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -122,9 +143,26 @@ class SentraClient {
   Future<Map<String, dynamic>> getRoute(String route) => _get(route);
   Future<Map<String, dynamic>> postRoute(String route, Map<String, dynamic> body) => _post(route, body);
 
+  Map<String, String> _authHeaders() {
+    final token = _apiToken;
+    return token == null || token.isEmpty ? {} : {'Authorization': 'Bearer $token'};
+  }
+
   void _onData(dynamic data) {
     try {
       final json = jsonDecode(data as String) as Map<String, dynamic>;
+      if (json['type'] == 'auth') {
+        final payload = json['payload'] is Map<String, dynamic>
+            ? json['payload'] as Map<String, dynamic>
+            : const <String, dynamic>{};
+        final authenticated = json['ok'] == true || payload['ok'] == true;
+        _connected = authenticated;
+        _authRejected = !authenticated;
+        _reconnectAttempts = 0;
+        _connectionController.add(authenticated);
+        if (!authenticated) _channel?.sink.close();
+        return;
+      }
       if (json['type'] == 'event') {
         _eventController.add(TCREIEventData.fromJson(json));
       } else {
@@ -138,14 +176,14 @@ class SentraClient {
   void _onError(Object error) {
     _connected = false;
     _connectionController.add(false);
-    _scheduleReconnect();
+    if (!_authRejected) _scheduleReconnect();
   }
 
   void _onDone() {
     _connected = false;
     _connectionController.add(false);
     _channel = null;
-    _scheduleReconnect();
+    if (!_authRejected) _scheduleReconnect();
   }
 
   void _scheduleReconnect() {

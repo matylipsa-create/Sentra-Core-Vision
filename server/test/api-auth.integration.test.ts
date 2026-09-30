@@ -200,6 +200,50 @@ test('WebSocket accepts a valid bearer during the native handshake', async () =>
   }
 });
 
+test('WebSocket accepts canonical TCREI auth and acknowledges commands and telemetry', async () => {
+  const socket = new WebSocket(`ws://127.0.0.1:${port}`);
+  await once(socket, 'open');
+  try {
+    const authId = 'canonical-auth';
+    const authenticated = new Promise<{ ok: boolean; payload?: { ok?: boolean } }>((resolveMessage, reject) => {
+      const timer = setTimeout(() => reject(new Error('Canonical auth response timed out')), 2000);
+      const listener = (raw: WebSocket.RawData) => {
+        const message = JSON.parse(raw.toString()) as { type?: string; id?: string; ok?: boolean; payload?: { ok?: boolean } };
+        if (message.type !== 'auth' || message.id !== authId) return;
+        clearTimeout(timer);
+        socket.off('message', listener);
+        resolveMessage(message as { ok: boolean; payload?: { ok?: boolean } });
+      };
+      socket.on('message', listener);
+      socket.send(JSON.stringify({
+        type: 'auth', module: 'system', action: 'authenticate',
+        payload: { token: API_TOKEN }, timestamp: Date.now(), id: authId,
+      }));
+    });
+    const authResponse = await authenticated;
+    assert.equal(authResponse.ok, true);
+    assert.equal(authResponse.payload?.ok, true);
+
+    const commandAck = await sendSocketMessage<{ type?: string; id?: string; payload?: { ok?: boolean } }>(socket, {
+      type: 'command', module: 'system', action: 'set_setting', payload: { key: 'bioEnabled', value: false },
+      id: 'command-ack', timestamp: Date.now(),
+    });
+    assert.equal(commandAck.type, 'ack');
+    assert.equal(commandAck.id, 'command-ack');
+    assert.equal(commandAck.payload?.ok, true);
+
+    const telemetryAck = await sendSocketMessage<{ type?: string; id?: string; payload?: { ok?: boolean; error?: string } }>(socket, {
+      type: 'telemetry', module: 'vision', action: 'telemetry', payload: { signals: [] },
+      id: 'telemetry-ack', timestamp: Date.now(),
+    });
+    assert.equal(telemetryAck.type, 'ack');
+    assert.equal(telemetryAck.id, 'telemetry-ack');
+    assert.notEqual(telemetryAck.payload?.error, 'No handler for command:telemetry');
+  } finally {
+    socket.close();
+  }
+});
+
 test('WebSocket closes a session after an invalid auth frame', async () => {
   const socket = new WebSocket(`ws://127.0.0.1:${port}`);
   await once(socket, 'open');

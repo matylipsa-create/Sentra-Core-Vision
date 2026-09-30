@@ -19,12 +19,13 @@ type ServerMessage = {
   error?: string;
   event?: string;
   data?: unknown;
+  payload?: { ok?: boolean; error?: string; data?: unknown };
 };
 
 const RETRY_INITIAL_MS = 1000;
 const RETRY_MAX_MS = 30000;
 const PING_INTERVAL_MS = 5000;
-const ACK_TIMEOUT_MS = 10000;
+const ACK_TIMEOUT_MS = 5000;
 
 function createMessageId(): string {
   return window.crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -95,14 +96,19 @@ export class ResilientTCREIBus {
     socket?.close();
   }
 
-  async enqueue(action: 'telemetry' | 'operator_action', payload: Record<string, unknown>): Promise<void> {
+  async enqueue(
+    action: 'telemetry' | 'operator_action',
+    payload: Record<string, unknown>,
+    signature?: string,
+  ): Promise<void> {
     const message: TCREICommand = {
-      type: 'command',
+      type: action === 'telemetry' ? 'telemetry' : 'command',
       module: action === 'telemetry' ? 'vision' : 'system',
       action,
       payload,
       timestamp: Date.now(),
       id: createMessageId(),
+      ...(signature === undefined ? {} : { signature }),
     };
     await offlineQueueStorage.enqueue(message);
     await this.refreshQueueCount();
@@ -136,7 +142,14 @@ export class ResilientTCREIBus {
         socket.close();
         return;
       }
-      socket.send(JSON.stringify({ type: 'auth', token }));
+      socket.send(JSON.stringify({
+        type: 'auth',
+        module: 'system',
+        action: 'authenticate',
+        payload: { token },
+        timestamp: Date.now(),
+        id: createMessageId(),
+      }));
       this.authTimer = window.setTimeout(() => socket.close(), ACK_TIMEOUT_MS);
     };
 
@@ -188,12 +201,14 @@ export class ResilientTCREIBus {
       return;
     }
 
-    if (message.type === 'response' || message.type === 'error') {
+    if (message.type === 'response' || message.type === 'error' || message.type === 'ack') {
+      const ok = message.payload?.ok ?? message.ok;
+      const error = message.payload?.error ?? message.error;
       const pingRequest = this.pingRequest;
       if (pingRequest && pingRequest.id === message.id) {
         const rttMs = Math.round(performance.now() - pingRequest.startedAt);
         this.pingRequest = null;
-        this.update({ rttMs, message: message.ok ? 'Estado del bus actualizado.' : message.error ?? 'Error en el ping.' });
+        this.update({ rttMs, message: ok ? 'Estado del bus actualizado.' : error ?? 'Error en el ping.' });
       }
       if (this.sendingEntryId !== null && this.sendingMessageId === message.id) {
         void this.acknowledgeOutbox(message);
@@ -248,7 +263,7 @@ export class ResilientTCREIBus {
     this.sendingEntryId = null;
     this.sendingMessageId = null;
     this.clearTimer('ackTimer');
-    if (message.ok) {
+    if (message.payload?.ok ?? message.ok) {
       try {
         await offlineQueueStorage.remove(entryId);
         await this.refreshQueueCount();
@@ -257,7 +272,7 @@ export class ResilientTCREIBus {
         console.error('[ResilientTCREIBus] No se pudo confirmar la cola offline:', error);
       }
     } else {
-      this.update({ message: message.error ?? 'El servidor rechazó un evento pendiente.' });
+      this.update({ message: message.payload?.error ?? message.error ?? 'El servidor rechazó un evento pendiente.' });
       this.socket?.close();
     }
   }

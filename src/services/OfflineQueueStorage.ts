@@ -2,12 +2,13 @@ import type { DBSchema, IDBPDatabase } from 'idb';
 import { openDatabase, withStore } from '../core/IndexedDBHelper';
 
 export interface TCREICommand {
-  type: 'command';
+  type: 'command' | 'telemetry';
   module: string;
   action: string;
   payload: Record<string, unknown>;
   timestamp: number;
   id: string;
+  signature?: string;
 }
 
 export interface OfflineQueueEntry {
