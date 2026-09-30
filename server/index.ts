@@ -26,6 +26,13 @@ import {
 } from './PluginHost.js';
 
 const PORT = parseInt(process.env.SENTRA_PORT ?? '8080', 10);
+const MAX_REST_BODY_BYTES = 64 * 1024;
+const TRUSTED_TLS_PROXY = process.env.SENTRA_TRUSTED_TLS_PROXY === 'true';
+const HOST = process.env.SENTRA_HOST ?? (TRUSTED_TLS_PROXY ? '0.0.0.0' : '127.0.0.1');
+const IS_LOOPBACK_HOST = ['localhost', '127.0.0.1', '::1'].includes(HOST);
+if (!IS_LOOPBACK_HOST && !TRUSTED_TLS_PROXY) {
+  throw new Error('Non-loopback bind requires SENTRA_TRUSTED_TLS_PROXY=true and a TLS-terminating reverse proxy');
+}
 const API_TOKEN = process.env.SENTRA_API_TOKEN ?? process.env.SENTRA_PLUGIN_CONTROL_TOKEN ?? '';
 if (!API_TOKEN) throw new Error('SENTRA_API_TOKEN (or SENTRA_PLUGIN_CONTROL_TOKEN) is required');
 const API_TOKEN_BYTES = Buffer.from(API_TOKEN);
@@ -380,7 +387,7 @@ const handlers: Record<string, Handler> = {
 
 // ─── WebSocket server ───────────────────────────────────
 
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 const clients = new Set<WebSocket>();
 const allConnections = new Set<WebSocket>();
 const websocketRtt = new Map<WebSocket, number>();
@@ -707,16 +714,36 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
 
     sendJson(404, { error: `No route: ${route}` });
   } catch (err) {
-    sendJson(500, { error: err instanceof Error ? err.message : 'Server error' });
+    const statusCode = err instanceof Error && err.name === 'PayloadTooLargeError' ? 413 : 500;
+    sendJson(statusCode, { error: err instanceof Error ? err.message : 'Server error' });
   }
 });
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString()));
-    req.on('error', reject);
+    let totalBytes = 0;
+    let settled = false;
+    req.on('data', (chunk) => {
+      if (settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buffer.length;
+      if (totalBytes > MAX_REST_BODY_BYTES) {
+        settled = true;
+        const error = new Error('Request body exceeds the 64 KB limit');
+        error.name = 'PayloadTooLargeError';
+        reject(error);
+        req.resume();
+        return;
+      }
+      chunks.push(buffer);
+    });
+    req.on('end', () => {
+      if (!settled) resolve(Buffer.concat(chunks).toString());
+    });
+    req.on('error', (error) => {
+      if (!settled) reject(error);
+    });
   });
 }
 
@@ -798,9 +825,9 @@ const performanceInterval = setInterval(() => {
 
 await init();
 
-httpServer.listen(PORT, () => {
-  console.log(`[Sentra Core API] REST escuchando en http://localhost:${PORT}/api`);
-  console.log(`[Sentra Core API] WebSocket en ws://localhost:${PORT}`);
+httpServer.listen(PORT, HOST, () => {
+  console.log(`[Sentra Core API] REST escuchando en http://${HOST}:${PORT}/api`);
+  console.log(`[Sentra Core API] WebSocket en ws://${HOST}:${PORT}`);
 });
 
 let isShuttingDown = false;

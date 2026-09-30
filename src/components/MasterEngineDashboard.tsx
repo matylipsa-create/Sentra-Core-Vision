@@ -100,11 +100,22 @@ export function MasterEngineDashboard() {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingImprovements, setIsExportingImprovements] = useState(false);
   const [airGapPeerId, setAirGapPeerId] = useState('');
+  const [airGapSourceId, setAirGapSourceId] = useState('');
   const [airGapPassphrase, setAirGapPassphrase] = useState('');
   const [isSyncingAirGap, setIsSyncingAirGap] = useState(false);
   const [airGapStatus, setAirGapStatus] = useState('');
   const [lastAirGapImport, setLastAirGapImport] = useState<AirGapImportResult | null>(null);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    void getAirGapSourceId().then((sourceId) => {
+      if (!cancelled) setAirGapSourceId(sourceId);
+    }).catch((identityError: unknown) => {
+      if (!cancelled) setAirGapStatus(identityError instanceof Error ? identityError.message : 'No se pudo cargar la identidad del nodo.');
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const unsubscribeSnapshot = bus.subscribe((snapshot) => {
@@ -282,7 +293,7 @@ export function MasterEngineDashboard() {
       const count = await downloadAirGapDeltaFile(
         storageService,
         airGapPeerId.trim(),
-        getAirGapSourceId(),
+        airGapSourceId,
         airGapPassphrase,
       );
       setAirGapStatus(`Paquete exportado en ${count} bloques cifrados.`);
@@ -291,7 +302,7 @@ export function MasterEngineDashboard() {
     } finally {
       setIsSyncingAirGap(false);
     }
-  }, [airGapPassphrase, airGapPeerId]);
+  }, [airGapPassphrase, airGapPeerId, airGapSourceId]);
 
   const handleAirGapImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -314,14 +325,14 @@ export function MasterEngineDashboard() {
     if (!lastAirGapImport) return;
     setIsSyncingAirGap(true);
     try {
-      const count = await downloadAirGapAcknowledgementFile(lastAirGapImport, getAirGapSourceId(), airGapPassphrase);
+      const count = await downloadAirGapAcknowledgementFile(lastAirGapImport, airGapSourceId, airGapPassphrase);
       setAirGapStatus(`Acuse exportado en ${count} bloques cifrados.`);
     } catch (syncError) {
       setAirGapStatus(syncError instanceof Error ? syncError.message : 'No se pudo exportar el acuse.');
     } finally {
       setIsSyncingAirGap(false);
     }
-  }, [airGapPassphrase, lastAirGapImport]);
+  }, [airGapPassphrase, airGapSourceId, lastAirGapImport]);
 
   const handleAirGapAcknowledgementImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -410,7 +421,7 @@ export function MasterEngineDashboard() {
             <p className="text-[10px] uppercase tracking-wider text-[#789788]">AES-256-GCM · PBKDF2-SHA-256</p>
             <h2 id="airgap-sync-title" className="mt-1 text-sm font-semibold text-[#aaffdf]">Intercambio air-gapped EVOLIS</h2>
           </div>
-          <span className="text-[10px] text-[#789788]">Nodo {getAirGapSourceId().slice(0, 8)}</span>
+          <span className="text-[10px] text-[#789788]">Nodo {airGapSourceId ? airGapSourceId.slice(7, 15) : '...'}</span>
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <label className="text-[10px] text-[#83a999]" htmlFor="airgap-peer-id">ID del nodo receptor
@@ -421,7 +432,7 @@ export function MasterEngineDashboard() {
           </label>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" onClick={() => void handleAirGapExport()} disabled={isSyncingAirGap || airGapPeerId.trim().length === 0 || airGapPassphrase.length < 12} className="min-h-10 border border-[#00d4a0]/35 px-3 text-[10px] text-[#aaffdf] hover:bg-[#00d4a0]/10 disabled:opacity-40">EXPORTAR DELTA CIFRADO</button>
+          <button type="button" onClick={() => void handleAirGapExport()} disabled={isSyncingAirGap || !airGapSourceId || airGapPeerId.trim().length === 0 || airGapPassphrase.length < 12} className="min-h-10 border border-[#00d4a0]/35 px-3 text-[10px] text-[#aaffdf] hover:bg-[#00d4a0]/10 disabled:opacity-40">EXPORTAR DELTA CIFRADO</button>
           <label className={`flex min-h-10 cursor-pointer items-center border border-[#00d4a0]/35 px-3 text-[10px] text-[#aaffdf] hover:bg-[#00d4a0]/10 ${isSyncingAirGap || airGapPassphrase.length < 12 ? 'pointer-events-none opacity-40' : ''}`}>
             IMPORTAR PAQUETE
             <input type="file" accept="application/vnd.sentra.airgap+json,.json" disabled={isSyncingAirGap || airGapPassphrase.length < 12} onChange={(event) => void handleAirGapImport(event)} className="sr-only" />

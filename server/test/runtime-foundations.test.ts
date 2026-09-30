@@ -4,9 +4,11 @@ import 'fake-indexeddb/auto';
 import { ComplexEventProcessor } from '../../src/core/ComplexEventProcessor.js';
 import { EVOLIS } from '../../src/core/EVOLIS.js';
 import { HotPlugRegistry } from '../../src/core/HotPlugRegistry.js';
+import { evolisSourceIdFromPublicKey } from '../../src/lib/crypto.js';
 import {
   createAirGapAcknowledgementChunks,
   exportAirGapDelta,
+  getAirGapSourceId,
   importAirGapAcknowledgement,
   importAirGapDelta,
   joinAirGapChunks,
@@ -63,6 +65,14 @@ test('hot-plug loader activates, deactivates, and detaches a plugin', async () =
   await assert.rejects(registry.activate('telemetry', undefined), /Plugin not registered/);
 });
 
+test('air-gap node identity is stable without localStorage', async () => {
+  assert.equal(typeof globalThis.localStorage, 'undefined');
+  const first = await getAirGapSourceId();
+  const second = await getAirGapSourceId();
+  assert.match(first, /^sentra:[0-9a-f]{64}$/);
+  assert.equal(second, first);
+});
+
 test('air-gap delta encrypts, chunks, verifies EVOLIS, and imports to an isolated node', async () => {
   const suffix = crypto.randomUUID();
   const sourceStorage = new StorageService(`airgap-source-${suffix}`);
@@ -78,10 +88,18 @@ test('air-gap delta encrypts, chunks, verifies EVOLIS, and imports to an isolate
   await source.record('vision', 'detection', JSON.stringify({ label: 'person' }));
   await source.record('telemetry', 'sample', JSON.stringify({ temperature: 22 }));
   for (const entry of evidence) await sourceStorage.saveEvidence(entry);
+  assert.ok(keyPair);
+  await sourceStorage.saveEvolisKey(keyPair);
+  const sourceId = await evolisSourceIdFromPublicKey(keyPair.publicKey);
 
   const passphrase = 'air-gap-integration-passphrase';
-  const chunks = await exportAirGapDelta(sourceStorage, 'receiver-node', 'source-node', passphrase, 1024);
+  const chunks = await exportAirGapDelta(sourceStorage, 'receiver-node', sourceId, passphrase, 1024);
+  const exportedBatch = await sourceStorage.exportEvidenceDeltaForPeer('receiver-node', sourceId);
   assert.ok(chunks.length > 1);
+  await assert.rejects(
+    receiverStorage.applyEvidenceDelta({ ...exportedBatch, sourceId: `${sourceId}-spoofed` }, `${sourceId}-spoofed`),
+    /source id does not match its EVOLIS signing key/,
+  );
 
   await assert.rejects(
     importAirGapDelta(receiverStorage, chunks, 'source-node', 'wrong-air-gap-passphrase'),
@@ -94,10 +112,11 @@ test('air-gap delta encrypts, chunks, verifies EVOLIS, and imports to an isolate
   await assert.rejects(importAirGapDelta(receiverStorage, corrupted, 'source-node', passphrase));
   assert.equal((await receiverStorage.getSyncedEvidence()).length, 0);
 
-  const result = await importAirGapDelta(receiverStorage, [...chunks].reverse(), 'source-node', passphrase);
+  const result = await importAirGapDelta(receiverStorage, [...chunks].reverse(), sourceId, passphrase);
   assert.equal(result.appliedThrough, 1);
-  assert.equal((await receiverStorage.getSyncedEvidence('source-node')).length, 2);
-  assert.equal((await receiverStorage.loadSyncCursor('source-node'))?.lastHash, result.endingHash);
+  assert.equal(result.sourceId, sourceId);
+  assert.equal((await receiverStorage.getSyncedEvidence(sourceId)).length, 2);
+  assert.equal((await receiverStorage.loadSyncCursor(sourceId))?.lastHash, result.endingHash);
 
   const acknowledgementChunks = await createAirGapAcknowledgementChunks(result, 'receiver-node', passphrase);
   const acknowledgementPackage = await joinAirGapChunks(acknowledgementChunks);
@@ -106,8 +125,14 @@ test('air-gap delta encrypts, chunks, verifies EVOLIS, and imports to an isolate
     /different peer/,
   );
   await assert.rejects(
-    sourceStorage.acknowledgeEvidenceDelta('receiver-node', 'source-node', 1, '0'.repeat(64)),
-    /does not match the local evidence chain/,
+    sourceStorage.acknowledgeEvidenceDelta('receiver-node', sourceId, 'unknown-export', 1, result.endingHash),
+    /does not match the pending export/,
+  );
+  const thirdEvidence = await source.record('telemetry', 'sample', JSON.stringify({ temperature: 23 }));
+  await sourceStorage.saveEvidence(thirdEvidence);
+  await assert.rejects(
+    sourceStorage.acknowledgeEvidenceDelta('receiver-node', sourceId, exportedBatch.exportId, 2, thirdEvidence.entry.hash),
+    /does not match the pending export/,
   );
   assert.equal(await sourceStorage.loadSyncCursor('receiver-node', 'outbound'), undefined);
   await importAirGapAcknowledgement(
@@ -116,9 +141,7 @@ test('air-gap delta encrypts, chunks, verifies EVOLIS, and imports to an isolate
     'receiver-node',
     passphrase,
   );
-  const thirdEvidence = await source.record('telemetry', 'sample', JSON.stringify({ temperature: 23 }));
-  await sourceStorage.saveEvidence(thirdEvidence);
-  const nextDelta = await sourceStorage.exportEvidenceDeltaForPeer('receiver-node', 'source-node');
+  const nextDelta = await sourceStorage.exportEvidenceDeltaForPeer('receiver-node', sourceId);
   assert.deepEqual(nextDelta.entries.map((entry) => entry.entry.index), [2]);
   assert.equal(await source.verify(), true);
 });

@@ -10,14 +10,17 @@ npm install
 npm start
 ```
 
-El servidor escucha en el puerto 8080 (configurable via `SENTRA_PORT`).
+El servidor escucha en el puerto 8080 (configurable via `SENTRA_PORT`) y enlaza por defecto a `127.0.0.1` (`SENTRA_HOST`).
 
-- **WebSocket**: `ws://localhost:8080`
-- **REST API**: `http://localhost:8080/api/...`
+- **WebSocket**: `ws://127.0.0.1:8080`
+- **REST API**: `http://127.0.0.1:8080/api/...`
 
 ## Configuracion de produccion
 
 - `SENTRA_API_TOKEN`: credencial bearer obligatoria para arrancar el servidor. Si no se define, el proceso termina. Como transición, acepta `SENTRA_PLUGIN_CONTROL_TOKEN` como fallback.
+- `SENTRA_HOST`: dirección de bind; por defecto `127.0.0.1`. Un host no-loopback se rechaza salvo que se configure `SENTRA_TRUSTED_TLS_PROXY=true`.
+- `SENTRA_TRUSTED_TLS_PROXY`: confirmación explícita de que un proxy inverso termina TLS delante del backend. No habilitarlo sin TLS y reglas de firewall que impidan el acceso directo al puerto Node.
+- Frames WebSocket y cuerpos REST tienen un límite fijo de 64 KiB.
 - `SENTRA_CORS_ORIGINS`: lista separada por comas de origenes HTTPS exactos autorizados. HTTP queda permitido solo para loopback.
 - `SENTRA_PLUGIN_CONTROL_TOKEN`: segundo secreto para `attach_plugin`, `activate_plugin`, `deactivate_plugin` y `detach_plugin` por TCREI.
 - `SENTRA_EVIDENCE_PATH`: ruta del diario EVOLIS JSONL. Por defecto se usa `server/data/evolis-audit.jsonl`.
@@ -31,9 +34,9 @@ Para controlar plugins se requiere además el segundo secreto en `payload.contro
 
 ## Sincronizacion air-gapped
 
-En Master Engine, introduce el ID del nodo remoto y una frase de intercambio de al menos 12 caracteres. Exporta el delta cifrado como JSON, transfiere el archivo por el medio aislado y usa la misma frase en el nodo receptor para importarlo. El receptor comprueba AES-GCM, continuidad del hash EVOLIS y firmas antes de guardar el lote; los datos recibidos quedan separados de la cadena local.
+El ID del nodo es `sentra:<SHA-256(clave pública SPKI)>`, por lo que se conserva aunque `localStorage` no esté disponible. En Master Engine, introduce el ID del nodo remoto y una frase de intercambio de al menos 12 caracteres. Exporta el delta cifrado como JSON, transfiere el archivo por el medio aislado y usa la misma frase en el nodo receptor para importarlo. El receptor comprueba AES-GCM, que el sourceId corresponda a una única clave pública, continuidad del hash EVOLIS y firmas antes de guardar el lote; los datos recibidos quedan separados de la cadena local.
 
-Después de importar, exporta el acuse cifrado y devuélvelo al nodo origen. El origen verifica el hash confirmado contra su propia cadena y solo entonces avanza el cursor de ese peer. El próximo paquete contiene únicamente registros posteriores al acuse. Los archivos no contienen la frase de intercambio.
+Cada peer mantiene como máximo un lote exportado pendiente. Después de importar, exporta el acuse cifrado y devuélvelo al nodo origen. El origen exige que peerId, exportId, índice y hash coincidan con ese lote y que el hash/firmas continúen válidos en su cadena; solo entonces avanza el cursor. El próximo paquete contiene únicamente registros posteriores al acuse. Los archivos no contienen la frase de intercambio.
 
 ## Endpoints REST
 

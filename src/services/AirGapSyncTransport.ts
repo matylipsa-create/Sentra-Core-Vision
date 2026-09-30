@@ -1,22 +1,14 @@
 import type { EvidenceDeltaBatch, StorageService } from './StorageService';
-import { sha256 } from '../lib/crypto';
+import { evolis } from '../core/EVOLIS';
+import { evolisSourceIdFromPublicKey, sha256 } from '../lib/crypto';
 
 const ITERATIONS = 310_000;
 const MIN_PASSPHRASE_LENGTH = 12;
 const MAX_PACKAGE_BYTES = 10 * 1024 * 1024;
 const MAX_CHUNKS = 4096;
-const SOURCE_ID_KEY = 'sentra_airgap_source_id';
-
-export function getAirGapSourceId(): string {
-  try {
-    const existing = localStorage.getItem(SOURCE_ID_KEY);
-    if (existing) return existing;
-    const sourceId = crypto.randomUUID();
-    localStorage.setItem(SOURCE_ID_KEY, sourceId);
-    return sourceId;
-  } catch {
-    return crypto.randomUUID();
-  }
+export async function getAirGapSourceId(): Promise<string> {
+  await evolis.initialize();
+  return evolisSourceIdFromPublicKey(evolis.getPublicKey());
 }
 
 export interface EncryptedAirGapPackage {
@@ -43,6 +35,7 @@ export interface AirGapChunk {
 
 export interface AirGapImportResult {
   sourceId: string;
+  exportId: string;
   appliedThrough: number;
   endingHash: string;
 }
@@ -51,6 +44,7 @@ export interface AirGapAcknowledgement {
   format: 'sentra-airgap-acknowledgement';
   version: 1;
   sourceId: string;
+  exportId: string;
   recipientId: string;
   lastIndex: number;
   lastHash: string;
@@ -188,7 +182,7 @@ export async function decryptAirGapAcknowledgement(
 ): Promise<AirGapAcknowledgement> {
   const acknowledgement = await decryptPayload<AirGapAcknowledgement>(serialized, 'acknowledgement', passphrase);
   if (acknowledgement.format !== 'sentra-airgap-acknowledgement' || acknowledgement.version !== 1
-    || !acknowledgement.sourceId || !acknowledgement.recipientId
+    || !acknowledgement.sourceId || !acknowledgement.exportId || !acknowledgement.recipientId
     || !Number.isInteger(acknowledgement.lastIndex) || acknowledgement.lastIndex < 0
     || !/^[0-9a-f]{64}$/i.test(acknowledgement.lastHash)) {
     throw new Error('Air-gap acknowledgement is invalid');
@@ -267,7 +261,7 @@ export async function importAirGapDelta(
   const serialized = await joinAirGapChunks(chunks);
   const batch = await decryptEvidenceDelta(serialized, passphrase);
   const appliedThrough = await storage.applyEvidenceDelta(batch, peerId ?? batch.sourceId);
-  return { sourceId: batch.sourceId, appliedThrough, endingHash: batch.endingHash };
+  return { sourceId: batch.sourceId, exportId: batch.exportId, appliedThrough, endingHash: batch.endingHash };
 }
 
 interface AirGapTransferFile {
@@ -342,6 +336,7 @@ export async function createAirGapAcknowledgementChunks(
     format: 'sentra-airgap-acknowledgement',
     version: 1,
     sourceId: result.sourceId,
+    exportId: result.exportId,
     recipientId: receiverId,
     lastIndex: result.appliedThrough,
     lastHash: result.endingHash,
@@ -384,6 +379,7 @@ export async function importAirGapAcknowledgement(
   await storage.acknowledgeEvidenceDelta(
     acknowledgement.recipientId,
     acknowledgement.sourceId,
+    acknowledgement.exportId,
     acknowledgement.lastIndex,
     acknowledgement.lastHash,
   );

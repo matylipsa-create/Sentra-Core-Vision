@@ -69,6 +69,8 @@ before(async () => {
     env: {
       ...process.env,
       SENTRA_PORT: String(port),
+      SENTRA_HOST: '127.0.0.1',
+      SENTRA_TRUSTED_TLS_PROXY: 'false',
       SENTRA_API_TOKEN: API_TOKEN,
       SENTRA_PLUGIN_CONTROL_TOKEN: 'integration-plugin-token',
       SENTRA_EVIDENCE_PATH: resolve(temporaryDirectory, 'evidence.jsonl'),
@@ -135,6 +137,15 @@ test('valid bearer can execute an authorized REST command', async () => {
   });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).allowed, true);
+});
+
+test('REST rejects bodies larger than 64 KB', async () => {
+  const response = await fetch(`http://127.0.0.1:${port}/api/settings`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: 'bioEnabled', value: true, padding: 'x'.repeat(64 * 1024) }),
+  });
+  assert.equal(response.status, 413);
 });
 
 test('WebSocket permits public queries but rejects protected messages until auth frame', async () => {
@@ -209,10 +220,20 @@ test('WebSocket closes a session after an invalid auth frame', async () => {
   assert.equal(code, 4401);
 });
 
+test('WebSocket rejects anonymous frames larger than 64 KB', async () => {
+  const socket = new WebSocket(`ws://127.0.0.1:${port}`);
+  await once(socket, 'open');
+  socket.send('x'.repeat(64 * 1024 + 1));
+  const [code] = await once(socket, 'close');
+  assert.equal(code, 1009);
+});
+
 test('backend refuses to start without an API credential', async () => {
   const env = { ...process.env };
   delete env.SENTRA_API_TOKEN;
   delete env.SENTRA_PLUGIN_CONTROL_TOKEN;
+  env.SENTRA_HOST = '127.0.0.1';
+  env.SENTRA_TRUSTED_TLS_PROXY = 'false';
   const unconfigured = spawn(process.execPath, ['--import', 'tsx', 'index.ts'], {
     cwd: serverRoot,
     env,
@@ -223,4 +244,23 @@ test('backend refuses to start without an API credential', async () => {
   const [code] = await once(unconfigured, 'exit');
   assert.notEqual(code, 0);
   assert.match(stderr, /SENTRA_API_TOKEN.*is required/);
+});
+
+test('backend refuses a non-loopback bind without trusted TLS proxy configuration', async () => {
+  const env = {
+    ...process.env,
+    SENTRA_API_TOKEN: API_TOKEN,
+    SENTRA_HOST: '0.0.0.0',
+    SENTRA_TRUSTED_TLS_PROXY: 'false',
+  };
+  const untrustedBind = spawn(process.execPath, ['--import', 'tsx', 'index.ts'], {
+    cwd: serverRoot,
+    env,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let stderr = '';
+  untrustedBind.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+  const [code] = await once(untrustedBind, 'exit');
+  assert.notEqual(code, 0);
+  assert.match(stderr, /Non-loopback bind requires SENTRA_TRUSTED_TLS_PROXY/);
 });

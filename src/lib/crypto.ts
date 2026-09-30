@@ -8,6 +8,11 @@ export async function sha256(data: string): Promise<HashHex> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+export async function evolisSourceIdFromPublicKey(publicKey: string): Promise<string> {
+  if (!publicKey) throw new Error('EVOLIS public key cannot be empty');
+  return `sentra:${await sha256(publicKey)}`;
+}
+
 export function uuidv4(): string {
   if (crypto.randomUUID) {
     return crypto.randomUUID();

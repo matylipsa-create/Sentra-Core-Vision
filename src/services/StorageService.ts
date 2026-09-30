@@ -1,10 +1,11 @@
 import type { DBSchema, IDBPDatabase } from 'idb';
 import type { EVOLISEvidence } from '../core/EVOLIS';
 import { openDatabase, withStore } from '../core/IndexedDBHelper';
-import { ecdsaVerify, sha256 } from '../lib/crypto';
+import { ecdsaVerify, evolisSourceIdFromPublicKey, sha256 } from '../lib/crypto';
 
 export interface EvidenceDeltaBatch {
   formatVersion: 1;
+  exportId: string;
   sourceId: string;
   fromIndex: number;
   toIndex: number;
@@ -29,6 +30,13 @@ export interface SyncedEvidenceRecord {
   evidence: EVOLISEvidence;
 }
 
+interface PendingEvidenceExport {
+  peerId: string;
+  sourceId: string;
+  batch: EvidenceDeltaBatch;
+  createdAt: number;
+}
+
 interface SentraDB extends DBSchema {
   evolis: { key: string; value: EVOLISEvidence };
   evolis_keys: { key: string; value: { publicKey: string; privateKey: string } };
@@ -36,10 +44,11 @@ interface SentraDB extends DBSchema {
   settings: { key: string; value: unknown };
   sync_cursors: { key: string; value: EvidenceSyncCursor };
   sync_evidence: { key: string; value: SyncedEvidenceRecord };
+  sync_exports: { key: string; value: PendingEvidenceExport };
 }
 
 const DB_NAME = 'sentra-core';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const GENESIS_HASH = '0'.repeat(64);
 const MAX_DELTA_ENTRIES = 500;
 
@@ -58,6 +67,9 @@ export class StorageService {
       if (!db.objectStoreNames.contains('sync_cursors')) db.createObjectStore('sync_cursors');
       if (!db.objectStoreNames.contains('sync_evidence')) {
         db.createObjectStore('sync_evidence', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('sync_exports')) {
+        db.createObjectStore('sync_exports', { keyPath: 'peerId' });
       }
     });
   }
@@ -84,6 +96,13 @@ export class StorageService {
     if (!Number.isFinite(limit) || limit < 1) throw new Error('Invalid evidence delta limit');
     const safeLimit = Math.min(MAX_DELTA_ENTRIES, Math.floor(limit));
     const entries = (await this.getAllEvidence()).sort((a, b) => a.entry.index - b.entry.index);
+    const localPublicKey = entries[0]?.signature.publicKey ?? (await this.loadEvolisKey())?.publicKey;
+    if (!localPublicKey || await evolisSourceIdFromPublicKey(localPublicKey) !== sourceId) {
+      throw new Error('Evidence source id does not match the local EVOLIS key');
+    }
+    if (entries.some((evidence) => evidence.signature.publicKey !== localPublicKey)) {
+      throw new Error('Local evidence contains multiple signing identities');
+    }
     const tailIndex = entries.at(-1)?.entry.index ?? -1;
     if (afterIndex > tailIndex) throw new Error('Evidence cursor is ahead of the local chain');
     const previousEntry = afterIndex === -1 ? undefined : entries.find(({ entry }) => entry.index === afterIndex);
@@ -93,6 +112,7 @@ export class StorageService {
 
     return {
       formatVersion: 1,
+      exportId: crypto.randomUUID(),
       sourceId,
       fromIndex: afterIndex + 1,
       toIndex: deltaEntries.at(-1)?.entry.index ?? afterIndex,
@@ -104,10 +124,25 @@ export class StorageService {
   }
 
   async exportEvidenceDeltaForPeer(peerId: string, sourceId: string, limit = 200): Promise<EvidenceDeltaBatch> {
+    if (!peerId.trim()) throw new Error('Sync peer id cannot be empty');
+    await this.init();
+    const pending = await withStore(this.db!, 'sync_exports', 'readonly', (store) => store.get(peerId));
+    if (pending) {
+      if (pending.sourceId !== sourceId) throw new Error('Pending export belongs to a different source');
+      return pending.batch;
+    }
     const cursor = await this.loadSyncCursor(peerId, 'outbound');
     if (cursor && cursor.sourceId !== sourceId) throw new Error('Sync cursor belongs to a different source');
     const batch = await this.exportEvidenceDelta(sourceId, cursor?.lastIndex ?? -1, limit);
     if (cursor && batch.previousHash !== cursor.lastHash) throw new Error('Outbound cursor no longer matches the local chain');
+    if (batch.entries.length > 0) {
+      await withStore(this.db!, 'sync_exports', 'readwrite', (store) => store.put({
+        peerId,
+        sourceId,
+        batch,
+        createdAt: Date.now(),
+      }));
+    }
     return batch;
   }
 
@@ -134,6 +169,12 @@ export class StorageService {
       || batch.previousHash !== batch.entries[0].entry.previousHash
       || batch.endingHash !== batch.entries.at(-1)?.entry.hash) {
       throw new Error('Evidence delta metadata does not match its entries');
+    }
+    const sourcePublicKey = batch.entries[0]?.signature?.publicKey;
+    if (typeof sourcePublicKey !== 'string'
+      || batch.entries.some((evidence) => evidence.signature?.publicKey !== sourcePublicKey)
+      || await evolisSourceIdFromPublicKey(sourcePublicKey) !== batch.sourceId) {
+      throw new Error('Evidence source id does not match its EVOLIS signing key');
     }
 
     const priorCursor = await this.loadSyncCursor(peerId, 'inbound');
@@ -193,15 +234,32 @@ export class StorageService {
     return expectedIndex;
   }
 
-  async acknowledgeEvidenceDelta(peerId: string, sourceId: string, lastIndex: number, lastHash: string): Promise<void> {
-    if (!peerId || !sourceId || !Number.isInteger(lastIndex) || lastIndex < 0) {
+  async acknowledgeEvidenceDelta(
+    peerId: string,
+    sourceId: string,
+    exportId: string,
+    lastIndex: number,
+    lastHash: string,
+  ): Promise<void> {
+    if (!peerId || !sourceId || !exportId || !Number.isInteger(lastIndex) || lastIndex < 0) {
       throw new Error('Invalid evidence delta acknowledgement');
+    }
+    await this.init();
+    const pending = await withStore(this.db!, 'sync_exports', 'readonly', (store) => store.get(peerId));
+    if (!pending || pending.sourceId !== sourceId || pending.batch.exportId !== exportId
+      || pending.batch.toIndex !== lastIndex || pending.batch.endingHash !== lastHash) {
+      throw new Error('Acknowledgement does not match the pending export for this peer');
     }
     const previous = await this.loadSyncCursor(peerId, 'outbound');
     if (previous && previous.sourceId !== sourceId) throw new Error('Sync cursor belongs to a different source');
     if (previous && lastIndex < previous.lastIndex) throw new Error('Acknowledgement cursor cannot move backwards');
 
     const entries = (await this.getAllEvidence()).sort((a, b) => a.entry.index - b.entry.index);
+    const localPublicKey = entries[0]?.signature.publicKey;
+    if (!localPublicKey || await evolisSourceIdFromPublicKey(localPublicKey) !== sourceId
+      || entries.some((evidence) => evidence.signature.publicKey !== localPublicKey)) {
+      throw new Error('Local evidence identity does not match the source id');
+    }
     const acknowledgedEntry = entries.find(({ entry }) => entry.index === lastIndex);
     if (!acknowledgedEntry || acknowledgedEntry.entry.hash !== lastHash) {
       throw new Error('Acknowledgement does not match the local evidence chain');
@@ -222,14 +280,20 @@ export class StorageService {
       }
       previousHash = entry.hash;
     }
-    await this.saveSyncCursor({
+    const cursor: EvidenceSyncCursor = {
       peerId,
       sourceId,
       direction: 'outbound',
       lastIndex,
       lastHash,
       updatedAt: Date.now(),
-    });
+    };
+    const transaction = this.db!.transaction(['sync_cursors', 'sync_exports'], 'readwrite');
+    await Promise.all([
+      transaction.objectStore('sync_cursors').put(cursor, `outbound:${peerId}`),
+      transaction.objectStore('sync_exports').delete(peerId),
+    ]);
+    await transaction.done;
   }
 
   async saveSyncCursor(cursor: EvidenceSyncCursor): Promise<void> {
