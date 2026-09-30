@@ -29,9 +29,12 @@ export default function App() {
     return (
       <>
         <InterfaceSettings />
-        <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000] flex gap-2">
+        <nav aria-label="Navegación principal" className="relative z-[10000] flex flex-wrap justify-end gap-2 px-4 pt-4">
           <button type="button" onClick={() => navigate('/master-engine')} className="min-h-11 border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
             MASTER ENGINE
+          </button>
+          <button type="button" onClick={() => navigate('/dashboard')} className="min-h-11 border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
+            DASHBOARD VISIÓN
           </button>
           <button type="button" onClick={() => navigate('/blind')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
             MODO ACCESIBLE
@@ -45,13 +48,33 @@ export default function App() {
     );
   }
 
+  if (route === '/dashboard') {
+    return (
+      <>
+        <InterfaceSettings />
+        <nav aria-label="Navegación principal" className="relative z-[10000] flex flex-wrap justify-end gap-2 px-4 pt-4">
+          <button type="button" onClick={() => navigate('/vision')} className="min-h-11 border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
+            ASISTENTE VISIÓN
+          </button>
+          <button type="button" onClick={() => navigate('/core')} className="min-h-11 border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
+            SENTRA CORE
+          </button>
+        </nav>
+        <SentraCoreDashboard onOpenVisionDemo={() => navigate('/vision')} />
+      </>
+    );
+  }
+
   if (route === '/vision') {
     return (
       <>
         <InterfaceSettings />
-        <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000]">
+        <nav aria-label="Navegación principal" className="relative z-[10000] flex flex-wrap justify-end gap-2 px-4 pt-4">
+          <button type="button" onClick={() => navigate('/dashboard')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
+            DASHBOARD VISIÓN
+          </button>
           <button type="button" onClick={() => navigate('/')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
-            ASISTENTE ACCESIBLE
+            INICIO
           </button>
         </nav>
         <AppProvider>
@@ -65,7 +88,7 @@ export default function App() {
     return (
       <>
         <InterfaceSettings />
-        <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000]">
+        <nav aria-label="Navegación principal" className="relative z-[10000] flex flex-wrap justify-end gap-2 px-4 pt-4">
           <button type="button" onClick={() => navigate('/core')} className="min-h-11 border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
             SENTRA CORE
           </button>
@@ -78,7 +101,10 @@ export default function App() {
   return (
     <>
       <InterfaceSettings />
-      <nav aria-label="Navegación principal" className="fixed right-4 top-4 z-[10000]">
+      <nav aria-label="Navegación principal" className="relative z-[10000] flex flex-wrap justify-end gap-2 px-4 pt-4">
+        <button type="button" onClick={() => navigate('/dashboard')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
+          DASHBOARD VISIÓN
+        </button>
         <button type="button" onClick={() => navigate('/core')} className="min-h-11 rounded border border-[#00ffcc]/50 bg-[#050507]/90 px-3 py-2 font-mono text-xs text-[#00ffcc] hover:bg-[#00ffcc] hover:text-black">
           SENTRA CORE
         </button>

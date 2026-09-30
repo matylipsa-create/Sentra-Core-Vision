@@ -36,7 +36,7 @@ export class HardwareTelemetryService {
       if (!disposed && battery) {
         onUpdate({
           type: 'BATTERY',
-          level: Math.round(battery.level * 100),
+          level: battery.level,
           charging: battery.charging,
         });
       }

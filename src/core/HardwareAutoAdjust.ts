@@ -23,15 +23,16 @@ export class HardwareAutoAdjust {
     if (caps.platform === 'desktop') return 'desktop';
 
     const score =
-      (caps.memory >= 4 ? 2 : caps.memory >= 2 ? 1 : 0) +
-      (caps.cores >= 4 ? 2 : caps.cores >= 2 ? 1 : 0) +
+      (caps.memory !== null && caps.memory >= 4 ? 2 : caps.memory !== null && caps.memory >= 2 ? 1 : 0) +
+      (caps.cores !== null && caps.cores >= 4 ? 2 : caps.cores !== null && caps.cores >= 2 ? 1 : 0) +
       (caps.hasCamera ? 1 : 0) +
       (caps.hasAccelerometer ? 1 : 0) +
       (caps.hasBluetooth ? 1 : 0);
 
-    if (caps.platform === 'mobile' && caps.memory <= 2) return 'low';
+    if (caps.platform === 'mobile' && caps.memory !== null && caps.memory <= 2) return 'low';
     if (score >= 5) return 'high';
     if (score >= 3) return 'medium';
+    if (caps.memory === null || caps.cores === null) return 'medium';
     return 'low';
   }
 

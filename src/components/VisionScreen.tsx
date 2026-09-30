@@ -258,7 +258,7 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
       try {
         const initialized = await sentraEngine.initializeCore(videoRef.current ?? undefined);
         if (!initialized) {
-          setError('Algunos sensores no están disponibles; usando telemetría simulada.');
+          setError('No se pudieron inicializar los sensores reales.');
         }
         setIsActive(true);
         onToggle?.(true);
@@ -312,6 +312,26 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
         window.clearInterval(telemetryIntervalRef.current);
         telemetryIntervalRef.current = null;
       }
+    };
+  }, [isActive]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!isActive || !video) {
+      sentraEngine.resetPerformanceMetrics();
+      return undefined;
+    }
+    let frameId = 0;
+    const measureRenderedFrames = (timestamp: number) => {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+        sentraEngine.recordRenderFrame(timestamp);
+      }
+      frameId = window.requestAnimationFrame(measureRenderedFrames);
+    };
+    frameId = window.requestAnimationFrame(measureRenderedFrames);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      sentraEngine.resetPerformanceMetrics();
     };
   }, [isActive]);
 
@@ -587,7 +607,7 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
             <strong>{systemMetrics.sensors.audio.speakerReady ? 'ACTIVO' : 'INACTIVO'}</strong>
           </p>
           <p>
-            GPS: {systemMetrics.sensors.gps.lat?.toFixed(4)}, {systemMetrics.sensors.gps.lon?.toFixed(4)}{' '}
+            GPS: {systemMetrics.sensors.gps.lat?.toFixed(4) ?? 'N/D'}, {systemMetrics.sensors.gps.lon?.toFixed(4) ?? 'N/D'}{' '}
             ({systemMetrics.sensors.gps.source})
           </p>
           <p>
@@ -597,12 +617,12 @@ export function VisionScreen({ onToggle }: VisionScreenProps) {
             ({systemMetrics.sensors.battery.source})
           </p>
           <p>
-            Orientación: α {systemMetrics.sensors.orientation.alpha?.toFixed(1)}° · β{' '}
-            {systemMetrics.sensors.orientation.beta?.toFixed(1)}° · γ{' '}
-            {systemMetrics.sensors.orientation.gamma?.toFixed(1)}° ({systemMetrics.sensors.orientation.source})
+            Orientación: α {systemMetrics.sensors.orientation.alpha?.toFixed(1) ?? 'N/D'}° · β{' '}
+            {systemMetrics.sensors.orientation.beta?.toFixed(1) ?? 'N/D'}° · γ{' '}
+            {systemMetrics.sensors.orientation.gamma?.toFixed(1) ?? 'N/D'}° ({systemMetrics.sensors.orientation.source})
           </p>
           <p>
-            Rendimiento: {systemMetrics.processingLoad.fps} FPS · {systemMetrics.processingLoad.inferenceTimeMs.toFixed(1)} ms
+            Rendimiento: {systemMetrics.processingLoad.fps?.toFixed(1) ?? 'N/D'} FPS · {systemMetrics.processingLoad.inferenceTimeMs?.toFixed(1) ?? 'N/D'} ms
           </p>
         </div>
       )}

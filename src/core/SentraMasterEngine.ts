@@ -9,7 +9,7 @@ export interface MasterDetectionInput {
 export interface ProcessedMasterDetection {
   object: string;
   priority: number;
-  distance_meters: number;
+  distance_meters: null;
   relative_position: string;
   bounding_box: [number, number, number, number];
 }
@@ -22,10 +22,10 @@ export interface MasterFrameOptions {
 }
 
 export interface MasterHardwareState {
-  gps: { lat: number; lng: number; accuracy: number; source: 'real' | 'simulated' };
-  orientation: { alpha: number; beta: number; gamma: number };
-  battery: { level: number; charging: boolean };
-  audioRms: number;
+  gps: { lat: number | null; lng: number | null; accuracy: number | null; source: 'real' | 'unavailable' };
+  orientation: { alpha: number | null; beta: number | null; gamma: number | null };
+  battery: { level: number | null; charging: boolean | null };
+  audioRms: number | null;
 }
 
 const VOCABULARY = new Map<string, { priority: number; name: string }>([
@@ -55,10 +55,10 @@ export class SentraMasterEngine {
   private auditTail: Promise<void> = Promise.resolve();
   private readonly auditHistory: AuditRecord[] = [];
   private readonly hardwareState: MasterHardwareState = {
-    gps: { lat: -38.0055, lng: -57.5426, accuracy: 0, source: 'simulated' },
-    orientation: { alpha: 0, beta: 0, gamma: 0 },
-    battery: { level: 100, charging: false },
-    audioRms: 0.02,
+    gps: { lat: null, lng: null, accuracy: null, source: 'unavailable' },
+    orientation: { alpha: null, beta: null, gamma: null },
+    battery: { level: null, charging: null },
+    audioRms: null,
   };
 
   getHardwareState(): MasterHardwareState {
@@ -74,11 +74,6 @@ export class SentraMasterEngine {
     return [...this.auditHistory];
   }
 
-  estimateDistance(box: [number, number, number, number], imageHeight: number): number {
-    const normalizedHeight = Math.max(box[3] / Math.max(imageHeight, 1), 0.05);
-    return Number(Math.min(Math.max(1.4 / normalizedHeight, 0.3), 15).toFixed(1));
-  }
-
   estimatePosition(x: number, width: number): string {
     const center = (x / Math.max(width, 1));
     if (center < 0.3) return 'a tu extrema izquierda';
@@ -91,7 +86,7 @@ export class SentraMasterEngine {
   processFrame(
     rawDetections: MasterDetectionInput[],
     imageWidth: number,
-    imageHeight: number,
+    _imageHeight: number,
     options: MasterFrameOptions = {},
   ): ProcessedMasterDetection[] {
     const detailLevel = options.detailLevel ?? 'analitico';
@@ -101,13 +96,11 @@ export class SentraMasterEngine {
       return {
         object: vocabulary?.name ?? detection.label,
         priority: vocabulary?.priority ?? 8,
-        distance_meters: this.estimateDistance(detection.box, imageHeight),
+        distance_meters: null,
         relative_position: this.estimatePosition(detection.box[0] + detection.box[2] / 2, imageWidth),
         bounding_box: detection.box,
       };
-    }).sort((first, second) =>
-      first.priority - second.priority || first.distance_meters - second.distance_meters,
-    );
+    }).sort((first, second) => first.priority - second.priority);
 
     const now = Date.now();
     if (
@@ -120,7 +113,7 @@ export class SentraMasterEngine {
       const description = processed.slice(0, limit).map((item) => (
         detailLevel === 'suave'
           ? `${item.object} ${item.relative_position}`
-          : `${item.object} ${item.relative_position}, a ${item.distance_meters} metros`
+          : `${item.object}, ubicado ${item.relative_position}`
       ));
       options.speak(`Detectado: ${description.join('. ')}.`, clampSpeechRate(options.speechRate ?? 1));
       this.lastSpokenTimestamp = now;
@@ -152,21 +145,17 @@ export class SentraMasterEngine {
 
   private updateHardwareState(metrics: SystemMetrics): void {
     this.hardwareState.gps = {
-      lat: metrics.sensors.gps.lat ?? -38.0055,
-      lng: metrics.sensors.gps.lon ?? -57.5426,
-      accuracy: metrics.sensors.gps.accuracy ?? 0,
+      lat: metrics.sensors.gps.lat,
+      lng: metrics.sensors.gps.lon,
+      accuracy: metrics.sensors.gps.accuracy,
       source: metrics.sensors.gps.source,
     };
-    this.hardwareState.orientation = {
-      alpha: smooth(this.hardwareState.orientation.alpha, metrics.sensors.orientation.alpha ?? 0),
-      beta: smooth(this.hardwareState.orientation.beta, metrics.sensors.orientation.beta ?? 0),
-      gamma: smooth(this.hardwareState.orientation.gamma, metrics.sensors.orientation.gamma ?? 0),
-    };
+    this.hardwareState.orientation = { ...metrics.sensors.orientation };
     this.hardwareState.battery = {
-      level: Math.round((metrics.sensors.battery.level ?? 1) * 100),
-      charging: metrics.sensors.battery.charging ?? false,
+      level: metrics.sensors.battery.level === null ? null : Math.round(metrics.sensors.battery.level * 100),
+      charging: metrics.sensors.battery.charging,
     };
-    this.hardwareState.audioRms = metrics.sensors.audio.ambientLevel ?? 0.02;
+    this.hardwareState.audioRms = metrics.sensors.audio.ambientLevel;
   }
 }
 
@@ -176,10 +165,6 @@ function normalizeLabel(label: string): string {
 
 function clampSpeechRate(rate: number): number {
   return Math.min(Math.max(rate, 0.8), 2.5);
-}
-
-function smooth(previous: number, current: number): number {
-  return previous + (current - previous) * 0.3;
 }
 
 export const sentraMaster = new SentraMasterEngine();

@@ -6,8 +6,8 @@ export interface DeviceCapabilities {
   hasGyroscope: boolean;
   hasVibration: boolean;
   hasBluetooth: boolean;
-  cores: number;
-  memory: number;
+  cores: number | null;
+  memory: number | null;
   hasServiceWorker: boolean;
   isOnline: boolean;
   isStandalone: boolean;
@@ -22,15 +22,15 @@ export class DeviceManager {
     const platform: DeviceCapabilities['platform'] = isTablet
       ? 'tablet' : isMobile ? 'mobile' : 'desktop';
 
-    const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
-    const cores = navigator.hardwareConcurrency ?? 4;
+    const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null;
+    const cores = navigator.hardwareConcurrency ?? null;
 
     return {
       platform,
       hasCamera: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
       hasGPS: 'geolocation' in navigator,
-      hasAccelerometer: 'DeviceMotion' in window,
-      hasGyroscope: 'DeviceOrientation' in window,
+      hasAccelerometer: 'DeviceMotionEvent' in window,
+      hasGyroscope: 'DeviceOrientationEvent' in window,
       hasVibration: 'vibrate' in navigator,
       hasBluetooth: 'bluetooth' in navigator,
       cores,

@@ -4,7 +4,6 @@ import { AccessibleSensorUI } from "./AccessibleSensorUI";
 import { sensorHub } from "../core/SensorHub";
 import { perceptionEngine } from "../core/PerceptionEngine";
 import { sensorModule } from "../modules/SensorModule";
-import { createSimulatedSensors } from "../sensors/SimulatedSensors";
 import { createNativeSensors } from "../services/NativeSensorService";
 import { createGPSSensor } from "../services/GPSSensorService";
 import type { HardwareTelemetryLogEntry } from "../services/HardwareTelemetryService";
@@ -27,7 +26,7 @@ function describeTelemetry(entry: HardwareTelemetryLogEntry): string {
         ? `GPS no disponible: ${data.error}`
         : `GPS ${data.lat.toFixed(5)}, ${data.lon.toFixed(5)} (±${Math.round(data.accuracy)} m)`;
     case "BATTERY":
-      return `Batería ${data.level}% · ${data.charging ? "cargando" : "sin carga"}`;
+      return `Batería ${Math.round(data.level * 100)}% · ${data.charging ? "cargando" : "sin carga"}`;
     case "ORIENTATION":
       return `Orientación α ${data.alpha?.toFixed(1) ?? "--"}° · β ${data.beta?.toFixed(1) ?? "--"}° · γ ${data.gamma?.toFixed(1) ?? "--"}°`;
   }
@@ -49,11 +48,6 @@ export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
     const gps = createGPSSensor();
     if (gps) {
       try { sensorHub.register(gps); } catch { /* id collision */ }
-    }
-
-    // Sensores simulados como fallback — siempre disponibles
-    for (const sensor of createSimulatedSensors()) {
-      try { sensorHub.register(sensor); } catch { /* id collision */ }
     }
 
     perceptionEngine.start();

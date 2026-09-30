@@ -3,6 +3,7 @@ import { moralNode } from '../core/MoralNode';
 import { evolis } from '../core/EVOLIS';
 import { PerceptionEngine, PerceptionData } from '../core/PerceptionEngine';
 import { bioSoftware } from '../core/BioSoftwareInterface';
+import { sentraEngine } from '../core/SentraCoreEngine';
 
 export interface Detection {
   class: string;
@@ -25,7 +26,8 @@ type CocoSsdModel = {
 export function useRealModeSensors(
   videoRef: React.RefObject<HTMLVideoElement>,
   active: boolean,
-  intervalMs: number = 3000
+  intervalMs: number = 3000,
+  modelBase: 'lite_mobilenet_v2' | 'mobilenet_v2' = 'lite_mobilenet_v2',
 ): RealModeSensorsState {
   const [state, setState] = useState<RealModeSensorsState>({
     loading: true, error: null, detections: [], perception: null, lastEval: null,
@@ -49,7 +51,7 @@ export function useRealModeSensors(
           console.warn('[COCO-SSD] WebGL no disponible; usando CPU.', backendError);
           await tf.setBackend('cpu');
         }
-        const model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+        const model = await cocoSsd.load({ base: modelBase });
         if (cancelled) return;
         modelRef.current = model as unknown as CocoSsdModel;
         setState((s) => ({ ...s, loading: false }));
@@ -75,7 +77,7 @@ export function useRealModeSensors(
         timeoutRef.current = null;
       }
     };
-  }, [active]);
+  }, [active, modelBase]);
 
   useEffect(() => {
     if (!active || state.loading || !modelRef.current) return;
@@ -100,11 +102,17 @@ export function useRealModeSensors(
         scheduleNext();
         return;
       }
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        scheduleNext();
+        return;
+      }
 
       const startedAt = performance.now();
       try {
         const predictions = await model.detect(video);
+        if (cancelled) return;
         const inferenceMs = performance.now() - startedAt;
+        sentraEngine.recordInferenceSample(inferenceMs);
         if (inferenceMs >= adaptiveIntervalMs * 0.8) {
           adaptiveIntervalMs = Math.min(10000, adaptiveIntervalMs + Math.max(500, Math.ceil(inferenceMs / 500) * 250));
         } else if (inferenceMs < adaptiveIntervalMs * 0.35) {
@@ -117,8 +125,8 @@ export function useRealModeSensors(
         perceptionEngine.current.setBioContext(bioSoftware.getState());
         const perception = perceptionEngine.current.process({
           visionDetections: detections,
-          imageWidth: video.videoWidth || 300,
-          imageHeight: video.videoHeight || 300,
+          imageWidth: video.videoWidth,
+          imageHeight: video.videoHeight,
         });
         const eval_ = moralNode.evaluate(`detect: ${detections.map((d) => d.class).join(', ')}`);
         const labels = [...new Set(detections.map((detection) => detection.class))].sort();

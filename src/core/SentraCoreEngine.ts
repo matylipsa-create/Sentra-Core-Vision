@@ -11,31 +11,32 @@ export interface SentraConfig {
 
 export interface SystemMetrics {
   timestamp: number;
-  mode: 'hybrid' | 'real' | 'simulated';
+  mode: 'real' | 'unavailable';
   sensors: {
     gps: {
       lat: number | null;
       lon: number | null;
       accuracy: number | null;
-      source: 'real' | 'simulated';
+      error: string | null;
+      source: 'real' | 'unavailable';
     };
     battery: {
       level: number | null;
       charging: boolean | null;
-      source: 'real' | 'simulated';
+      source: 'real' | 'unavailable';
     };
     orientation: {
       alpha: number | null;
       beta: number | null;
       gamma: number | null;
-      source: 'real' | 'simulated';
+      source: 'real' | 'unavailable';
     };
     camera: { active: boolean; stream: MediaStream | null };
-    audio: { speakerReady: boolean; currentFrequency: number; ambientLevel: number | null };
+    audio: { speakerReady: boolean; ambientLevel: number | null };
   };
   processingLoad: {
-    fps: number;
-    inferenceTimeMs: number;
+    fps: number | null;
+    inferenceTimeMs: number | null;
   };
 }
 
@@ -57,7 +58,7 @@ type WindowWithSensorState = Window & {
   __lastGamma?: number;
   __cameraActive?: boolean;
   __cameraStream?: MediaStream | null;
-  __gpsSource?: 'REAL_GPS_ACTIVE' | 'FALLBACK_MGP';
+  __gpsError?: string;
   __batteryLevel?: number;
   __batteryCharging?: boolean;
 };
@@ -79,15 +80,11 @@ export class SentraCoreEngine {
   private stopHardwareTelemetry: (() => void) | null = null;
   private lastMotionAlertAt = 0;
   private criticalSensorListeners = new Set<(message: string) => void>();
+  private hardwareTelemetryListeners = new Set<(update: HardwareTelemetryUpdate) => void>();
   private lastAcceleration = { x: null as number | null, y: null as number | null, z: null as number | null };
-  private simulatedState = {
-    lat: -38.0055,
-    lon: -57.5426,
-    battery: 0.92,
-    alpha: 12.5,
-    beta: 42.1,
-    gamma: -1.4,
-  };
+  private inferenceMetrics = { fps: null as number | null, inferenceTimeMs: null as number | null };
+  private lastRenderSampleAt: number | null = null;
+  private renderFrameCount = 0;
   private isInitialized = false;
   private readonly config: Required<SentraConfig>;
 
@@ -151,6 +148,40 @@ export class SentraCoreEngine {
     return () => this.criticalSensorListeners.delete(listener);
   }
 
+  onHardwareTelemetry(listener: (update: HardwareTelemetryUpdate) => void): () => void {
+    this.hardwareTelemetryListeners.add(listener);
+    return () => this.hardwareTelemetryListeners.delete(listener);
+  }
+
+  recordInferenceSample(inferenceTimeMs: number): void {
+    this.inferenceMetrics = {
+      fps: this.inferenceMetrics.fps,
+      inferenceTimeMs,
+    };
+  }
+
+  resetPerformanceMetrics(): void {
+    this.inferenceMetrics = { fps: null, inferenceTimeMs: null };
+    this.lastRenderSampleAt = null;
+    this.renderFrameCount = 0;
+  }
+
+  recordRenderFrame(timestamp: number): void {
+    if (this.lastRenderSampleAt === null) {
+      this.lastRenderSampleAt = timestamp;
+      return;
+    }
+    this.renderFrameCount += 1;
+    const elapsedMs = timestamp - this.lastRenderSampleAt;
+    if (elapsedMs < 1000) return;
+    this.inferenceMetrics = {
+      ...this.inferenceMetrics,
+      fps: this.renderFrameCount * 1000 / elapsedMs,
+    };
+    this.lastRenderSampleAt = timestamp;
+    this.renderFrameCount = 0;
+  }
+
   getAccelerationSnapshot() {
     return { ...this.lastAcceleration };
   }
@@ -196,23 +227,22 @@ export class SentraCoreEngine {
 
       await this.requestMotionAndOrientationPermissions();
 
-      if (videoElement && navigator.mediaDevices?.getUserMedia && !videoElement.srcObject) {
-        let stream: MediaStream | null = null;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
+      if (videoElement) {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error('La API de cámara no está disponible en este navegador.');
+        }
+        if (!videoElement.srcObject) {
+          const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
             audio: false,
           });
           videoElement.srcObject = stream;
           this.cameraStream = stream;
-          await videoElement.play();
-          console.info('[SentraCore] Cámara trasera enlazada.');
-        } catch (error) {
-          stream?.getTracks().forEach((track) => track.stop());
-          if (videoElement.srcObject === stream) videoElement.srcObject = null;
-          if (this.cameraStream === stream) this.cameraStream = null;
-          console.warn('[SentraCore] Cámara no disponible o permiso rechazado:', error);
         }
+        this.cameraStream = videoElement.srcObject instanceof MediaStream ? videoElement.srcObject : null;
+        if (!this.cameraStream) throw new Error('No se obtuvo un flujo de cámara real.');
+        await videoElement.play();
+        console.info('[SentraCore] Cámara trasera enlazada.');
       }
 
       await this.startAmbientAudioAnalysis();
@@ -221,14 +251,8 @@ export class SentraCoreEngine {
       this.isInitialized = true;
       return true;
     } catch (error) {
-      console.warn(
-        '[SentraCore] Algunos sensores físicos no están disponibles; se usará modo híbrido:',
-        error,
-      );
-      await this.startAmbientAudioAnalysis();
-      globalVoiceQueue.enqueue('Modo híbrido activado. Sensores virtuales de respaldo.');
-      this.isInitialized = true;
-      return false;
+      this.shutdownCore(videoElement);
+      throw error;
     }
   }
 
@@ -265,6 +289,17 @@ export class SentraCoreEngine {
     const browserWindow = window as WindowWithSensorState;
     delete browserWindow.__batteryLevel;
     delete browserWindow.__batteryCharging;
+    delete browserWindow.__realLat;
+    delete browserWindow.__realLon;
+    delete browserWindow.__realAcc;
+    delete browserWindow.__gpsError;
+    delete browserWindow.__lastAlpha;
+    delete browserWindow.__lastBeta;
+    delete browserWindow.__lastGamma;
+    this.inferenceMetrics = { fps: null, inferenceTimeMs: null };
+    this.lastRenderSampleAt = null;
+    this.renderFrameCount = 0;
+    this.lastAcceleration = { x: null, y: null, z: null };
     if (this.motionListener) {
       window.removeEventListener('devicemotion', this.motionListener);
       this.motionListener = null;
@@ -286,9 +321,9 @@ export class SentraCoreEngine {
     const browserWindow = window as WindowWithSensorState;
     let batteryLevel: number | null = browserWindow.__batteryLevel === undefined
       ? null
-      : browserWindow.__batteryLevel / 100;
+      : browserWindow.__batteryLevel;
     let batteryCharging: boolean | null = browserWindow.__batteryCharging ?? null;
-    let batterySource: 'real' | 'simulated' = batteryLevel === null ? 'simulated' : 'real';
+    let batterySource: 'real' | 'unavailable' = batteryLevel === null ? 'unavailable' : 'real';
 
     if (batteryLevel === null && browserNavigator.getBattery) {
       try {
@@ -300,48 +335,43 @@ export class SentraCoreEngine {
         console.warn('[SentraCore] No se pudo leer la batería real:', error);
       }
     }
-    if (batteryLevel === null) {
-      batteryLevel = this.simulatedState.battery;
-      batteryCharging = false;
-    }
-
     const hasRealGps = browserWindow.__realLat !== undefined && browserWindow.__realLon !== undefined;
-    const hasRealOrientation = browserWindow.__lastAlpha !== undefined;
-    const rawAlpha = hasRealOrientation ? browserWindow.__lastAlpha! : this.simulatedState.alpha;
-    const rawBeta = hasRealOrientation ? browserWindow.__lastBeta ?? this.simulatedState.beta : this.simulatedState.beta;
-    const rawGamma = hasRealOrientation ? browserWindow.__lastGamma ?? this.simulatedState.gamma : this.simulatedState.gamma;
+    const rawAlpha = browserWindow.__lastAlpha ?? null;
+    const rawBeta = browserWindow.__lastBeta ?? null;
+    const rawGamma = browserWindow.__lastGamma ?? null;
+    const hasRealOrientation = rawAlpha !== null || rawBeta !== null || rawGamma !== null;
+    const cameraActive = videoStreamIsActive(this.cameraStream);
+    const hasRealMetrics = hasRealGps || batteryLevel !== null || hasRealOrientation
+      || cameraActive || this.audioCtx?.state === 'running' || this.getAmbientAudioLevel() !== null;
 
     return {
       timestamp,
-      mode: 'hybrid',
+      mode: hasRealMetrics ? 'real' : 'unavailable',
       sensors: {
         gps: {
-          lat: hasRealGps ? browserWindow.__realLat! : this.simulatedState.lat,
-          lon: hasRealGps ? browserWindow.__realLon! : this.simulatedState.lon,
-          accuracy: hasRealGps ? browserWindow.__realAcc ?? null : 5,
-          source: hasRealGps ? 'real' : 'simulated',
+          lat: hasRealGps ? browserWindow.__realLat! : null,
+          lon: hasRealGps ? browserWindow.__realLon! : null,
+          accuracy: hasRealGps ? browserWindow.__realAcc ?? null : null,
+          error: browserWindow.__gpsError ?? null,
+          source: hasRealGps ? 'real' : 'unavailable',
         },
         battery: { level: batteryLevel, charging: batteryCharging, source: batterySource },
         orientation: {
-          alpha: globalSensorFilter.filter('orientation.alpha', rawAlpha),
-          beta: globalSensorFilter.filter('orientation.beta', rawBeta),
-          gamma: globalSensorFilter.filter('orientation.gamma', rawGamma),
-          source: hasRealOrientation ? 'real' : 'simulated',
+          alpha: rawAlpha === null ? null : globalSensorFilter.filter('orientation.alpha', rawAlpha),
+          beta: rawBeta === null ? null : globalSensorFilter.filter('orientation.beta', rawBeta),
+          gamma: rawGamma === null ? null : globalSensorFilter.filter('orientation.gamma', rawGamma),
+          source: hasRealOrientation ? 'real' : 'unavailable',
         },
         camera: {
-          active: videoStreamIsActive(this.cameraStream),
+          active: cameraActive,
           stream: this.cameraStream,
         },
         audio: {
           speakerReady: this.audioCtx?.state === 'running',
-          currentFrequency: 440,
           ambientLevel: this.getAmbientAudioLevel(),
         },
       },
-      processingLoad: {
-        fps: 59 + Math.floor(Math.random() * 2),
-        inferenceTimeMs: 12.4 + Number((Math.random() * 1.5).toFixed(1)),
-      },
+      processingLoad: { ...this.inferenceMetrics },
     };
   }
 
@@ -353,10 +383,13 @@ export class SentraCoreEngine {
           browserWindow.__realLat = update.lat;
           browserWindow.__realLon = update.lon;
           browserWindow.__realAcc = update.accuracy;
-          browserWindow.__gpsSource = 'REAL_GPS_ACTIVE';
+          delete browserWindow.__gpsError;
         } else {
-          browserWindow.__gpsSource = 'FALLBACK_MGP';
-          console.warn('[SentraCore] GPS no disponible; se usa la posición de respaldo MGP:', update.error);
+          delete browserWindow.__realLat;
+          delete browserWindow.__realLon;
+          delete browserWindow.__realAcc;
+          browserWindow.__gpsError = update.error;
+          console.warn('[SentraCore] GPS real no disponible:', update.error);
         }
         break;
       case 'BATTERY':
@@ -365,10 +398,14 @@ export class SentraCoreEngine {
         break;
       case 'ORIENTATION':
         if (typeof update.alpha === 'number') browserWindow.__lastAlpha = update.alpha;
+        else delete browserWindow.__lastAlpha;
         if (typeof update.beta === 'number') browserWindow.__lastBeta = update.beta;
+        else delete browserWindow.__lastBeta;
         if (typeof update.gamma === 'number') browserWindow.__lastGamma = update.gamma;
+        else delete browserWindow.__lastGamma;
         break;
     }
+    for (const listener of this.hardwareTelemetryListeners) listener(update);
   }
 
   private async requestMotionAndOrientationPermissions(): Promise<void> {
@@ -444,17 +481,15 @@ export async function sentraFullAwaken(videoElement?: HTMLVideoElement): Promise
 
 export async function sentraExportSignedJSON(): Promise<void> {
   const metrics = await sentraEngine.fetchLiveMetrics();
-  const browserWindow = window as WindowWithSensorState;
   const payload = {
     timestamp: new Date(metrics.timestamp).toISOString(),
-    node: 'SENTRA_CORE_MOBILE_MGP',
+    node: 'SENTRA_CORE_DEVICE',
     telemetry: {
       gps: {
         lat: metrics.sensors.gps.lat,
         lng: metrics.sensors.gps.lon,
         accuracy: metrics.sensors.gps.accuracy,
-        source: browserWindow.__gpsSource
-          ?? (metrics.sensors.gps.source === 'real' ? 'REAL_GPS_ACTIVE' : 'FALLBACK_MGP'),
+        source: metrics.sensors.gps.source === 'real' ? 'REAL_GPS_ACTIVE' : 'UNAVAILABLE',
       },
       orientation: metrics.sensors.orientation,
       acceleration: sentraEngine.getAccelerationSnapshot(),
