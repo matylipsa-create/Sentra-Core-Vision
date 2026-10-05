@@ -5,10 +5,14 @@ import {
 } from '../services/HardwareTelemetryService';
 import { sensorHub, type LocationReading } from '../core/SensorHub';
 import { BlindUnifiedUI } from './BlindUnifiedUI';
+import { useApp } from '../context/AppContext';
+import { sentraGuardianHub } from '../core/SentraGuardianHub';
 
 export default function BlindModeRoute() {
   const [engineStatus, setEngineStatus] = useState<'standby' | 'active'>('standby');
   const [telemetryLog, setTelemetryLog] = useState<HardwareTelemetryLogEntry[]>([]);
+  const [guardianAlert, setGuardianAlert] = useState(false);
+  const { humanVeto, evidenceCount } = useApp();
 
   useEffect(() => {
     let disposed = false;
@@ -50,24 +54,38 @@ export default function BlindModeRoute() {
       setEngineStatus('standby');
     });
 
+    const unsubGuardian = sentraGuardianHub.subscribe((state) => {
+      setGuardianAlert(state.sentinelAlertActive);
+    });
+
     return () => {
       disposed = true;
       stopSensors?.();
       stopReadings();
+      unsubGuardian();
     };
   }, []);
 
+  const statusDotClass = guardianAlert
+    ? 'blind-status-dot--alert'
+    : engineStatus === 'active'
+      ? 'blind-status-dot--active'
+      : 'blind-status-dot--standby';
+
+  const statusLabel = guardianAlert
+    ? 'ALERTA DE SEGURIDAD'
+    : engineStatus === 'active'
+      ? 'SENTRA VISIÓN ACTIVO'
+      : 'SENTRA VISIÓN EN ESPERA';
+
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
-      <header className="flex w-full flex-col justify-between gap-2 border-b border-[#00ffcc]/20 bg-[#12121a] px-4 pb-4 pt-16 sm:flex-row sm:items-center sm:py-4 sm:pr-56">
-        <div className="flex items-center gap-2">
-          <span className={`h-3 w-3 rounded-full ${engineStatus === 'active' ? 'animate-pulse bg-[#00ffcc]' : 'bg-amber-400'}`} aria-hidden="true" />
-          <span className="font-mono text-sm tracking-wider text-[#00ffcc]">SENTRA VISIÓN // EDGE</span>
-        </div>
-        <span className="font-mono text-xs text-gray-400" role="status">
-          EDGE-HOST {engineStatus === 'active' ? 'ACTIVE' : 'STANDBY'}
-        </span>
-      </header>
+      <div className="blind-status-live" role="banner" aria-live="polite">
+        <span className={`blind-status-dot ${statusDotClass}`} aria-hidden="true" />
+        <span className="blind-status-text">{statusLabel}</span>
+        {humanVeto && <span className="blind-status-badge blind-status-badge--veto">VETO ON</span>}
+        <span className="blind-status-badge blind-status-badge--evolis">EVOLIS: {evidenceCount}</span>
+      </div>
       <BlindUnifiedUI telemetry={telemetryLog} />
     </div>
   );

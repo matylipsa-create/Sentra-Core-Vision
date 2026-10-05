@@ -38,10 +38,8 @@ export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
   const { processCommand, isPassiveListening, togglePassiveListening } = useApp();
 
   useEffect(() => {
-    // Wiring multimodal: conecta hub → governor, router, accessibility, voice
     sentraGuardianHub.initMultimodal();
 
-    // Sensores reales nativos (Accelerometer, Gyroscope, AmbientLight, GPS)
     for (const sensor of createNativeSensors()) {
       try { sensorHub.register(sensor); } catch { /* id collision */ }
     }
@@ -124,24 +122,18 @@ export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
   return (
     <main className="sentra-app-shell">
       <BlindVisionPanel ref={visionActionsRef} />
-      <section className="blind-voice-entry" aria-label="Conversación por voz">
+
+      <section className="blind-voice-entry" aria-label="Conversación por voz bidireccional">
         <VoiceOrbButton onCommand={handleVoiceCommand} />
       </section>
+
       <details
         className="blind-advanced-tools"
         onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
       >
-        <summary>Más funciones y ajustes</summary>
+        <summary>Más funciones y ajustes avanzados</summary>
         {advancedOpen && (
           <div className="blind-advanced-content">
-            <div className="blind-vision-actions">
-              <button type="button" className="blind-action-btn" onClick={() => visionActionsRef.current?.describeNow()}>
-                Describir el entorno
-              </button>
-              <button type="button" className="blind-action-btn" onClick={() => visionActionsRef.current?.readText()}>
-                Leer texto con OCR
-              </button>
-            </div>
             <p>Para historial, reversión y controles clásicos:</p>
             <a href="/vision">Abrir herramientas avanzadas</a>
             <section className="hardware-telemetry" aria-labelledby="hardware-telemetry-title">
@@ -165,6 +157,7 @@ export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
           </div>
         )}
       </details>
+
       <BlindTactileQuadrants onAction={handleQuadrantAction} />
     </main>
   );

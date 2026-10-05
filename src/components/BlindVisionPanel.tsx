@@ -20,6 +20,9 @@ const LABELS_ES: Record<string, string> = {
   chair: 'silla', couch: 'sofá', bench: 'banco', door: 'puerta',
   bottle: 'botella', backpack: 'mochila', handbag: 'bolso', suitcase: 'maleta',
   'traffic light': 'semáforo', 'stop sign': 'señal de alto', 'potted plant': 'planta',
+  'cell phone': 'celular', 'laptop': 'notebook', 'tv': 'televisor',
+  'dining table': 'mesa', 'bed': 'cama', 'toilet': 'inodoro',
+  'fire hydrant': 'hidrante', 'parking meter': 'parquímetro',
 };
 
 export interface BlindVisionPanelActions {
@@ -54,6 +57,7 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isReadingText, setIsReadingText] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
   const profile = useRef(hardwareAutoAdjust.getProfile(deviceManager.detect())).current;
   const intervalMs = Math.max(2000, profile.visionIntervalMs || 5000);
   const { loading, error: modelError, detections } = useRealModeSensors(videoRef, cameraActive, intervalMs);
@@ -102,20 +106,28 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
     const next = !cameraActive;
     setCameraActive(next);
     deviceManager.vibrate(80);
-    voiceManager.speak(next ? 'Iniciando cámara y detección local.' : 'Cámara desactivada.', 2);
+    const msg = next ? 'Iniciando cámara y detección local.' : 'Cámara desactivada.';
+    voiceManager.speak(msg, 2);
+    setAnnouncement(msg);
   }, [cameraActive]);
 
   const describeNow = useCallback(() => {
     if (!cameraActive) {
-      voiceManager.speak('La cámara está desactivada. Toca el cuadrante superior izquierdo para iniciarla.', 2);
+      const msg = 'La cámara está desactivada. Toca el botón Activar cámara para iniciarla.';
+      voiceManager.speak(msg, 2);
+      setAnnouncement(msg);
       return;
     }
     if (loading) {
-      voiceManager.speak('Cargando el modelo local de detección.', 3);
+      const msg = 'Cargando el modelo local de detección.';
+      voiceManager.speak(msg, 3);
+      setAnnouncement(msg);
       return;
     }
     if (detections.length === 0) {
-      voiceManager.speak('No identifico objetos con confianza en este momento.', 3);
+      const msg = 'No identifico objetos con confianza en este momento.';
+      voiceManager.speak(msg, 3);
+      setAnnouncement(msg);
       return;
     }
 
@@ -126,7 +138,9 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
       .sort((a, b) => (b.bbox[2] * b.bbox[3]) - (a.bbox[2] * a.bbox[3]))
       .slice(0, 3);
     if (ranked.length === 0) {
-      voiceManager.speak('No identifico objetos con confianza en este momento.', 3);
+      const msg = 'No identifico objetos con confianza en este momento.';
+      voiceManager.speak(msg, 3);
+      setAnnouncement(msg);
       return;
     }
 
@@ -136,7 +150,9 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
       const size = areaRatio >= 0.2 ? ', ocupa gran parte de la imagen' : '';
       return `${labelInSpanish(detection.class)} ${directionInSpanish(direction)}${size}`;
     });
-    voiceManager.speak(`En la imagen: ${descriptions.join('. ')}. La cercanía se estima por tamaño y puede no corresponder a la distancia real.`, 3);
+    const msg = `En la imagen: ${descriptions.join('. ')}. La cercanía se estima por tamaño y puede no corresponder a la distancia real.`;
+    voiceManager.speak(msg, 3);
+    setAnnouncement(msg);
     deviceManager.vibratePattern('NOTIFICATION');
 
     const primary = ranked[0];
@@ -147,14 +163,13 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
   useEffect(() => {
     if (!cameraActive || detections.length === 0) return;
     const videoWidth = videoRef.current?.videoWidth || 640;
-    const videoHeight = videoRef.current?.videoHeight || 480;
     const primary = [...detections]
       .filter((detection) => detection.score >= 0.4)
       .sort((a, b) => (b.bbox[2] * b.bbox[3]) - (a.bbox[2] * a.bbox[3]))[0];
     if (!primary) return;
 
     const direction = directionFor(primary, videoWidth);
-    const area = Math.min(1, (primary.bbox[2] * primary.bbox[3]) / (videoWidth * videoHeight));
+    const area = Math.min(1, (primary.bbox[2] * primary.bbox[3]) / (videoWidth * (videoRef.current?.videoHeight || 480)));
     const possibleObstacle = OBSTACLE_CLASSES.has(primary.class) && area >= 0.12;
     const signature = `${primary.class}:${direction}:${possibleObstacle}`;
     const now = Date.now();
@@ -169,6 +184,7 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
       const message = `Posible obstáculo: ${objectDescription}, de gran tamaño en la imagen. Detente y verifica con tu técnica habitual.`;
       voiceManager.stop();
       voiceManager.speak(message, 1);
+      setAnnouncement(message);
       deviceManager.vibratePattern(area >= 0.25 ? 'VISION_VERY_CLOSE' : 'VISION_CLOSE');
       void evolis.record('blind_vision', 'possible_obstacle_alert', JSON.stringify({
         object: primary.class,
@@ -176,7 +192,9 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
         imageScale: 'large',
       })).catch((auditError: unknown) => console.warn('[BlindVision] No se pudo registrar alerta:', auditError));
     } else if (!cognitiveLoadManager.shouldThrottle()) {
-      voiceManager.speak(`Detectado: ${objectDescription}.`, 4);
+      const msg = `Detectado: ${objectDescription}.`;
+      voiceManager.speak(msg, 4);
+      setAnnouncement(msg);
     }
 
     const centerX = (primary.bbox[0] + primary.bbox[2] / 2) / videoWidth;
@@ -191,23 +209,32 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
   const handleReadText = useCallback(async () => {
     const video = videoRef.current;
     if (!cameraActive || !video || video.readyState < 2 || isReadingText) {
-      if (!cameraActive) voiceManager.speak('Primero activa la cámara para leer texto.', 3);
+      if (!cameraActive) {
+        const msg = 'Primero activa la cámara para leer texto.';
+        voiceManager.speak(msg, 3);
+        setAnnouncement(msg);
+      }
       return;
     }
     setIsReadingText(true);
+    setAnnouncement('Leyendo texto. Un momento.');
     try {
       await initOCR();
       const text = await recognizeText(video);
       if (!text) {
-        voiceManager.speak('No consigo leer texto en esta imagen.', 3);
+        const msg = 'No consigo leer texto en esta imagen.';
+        voiceManager.speak(msg, 3);
+        setAnnouncement(msg);
         return;
       }
       voiceManager.speak(`Texto detectado: ${text.slice(0, 400)}`, 2);
+      setAnnouncement(text.slice(0, 200));
       void evolis.record('blind_vision', 'ocr_read', JSON.stringify({ characters: text.length }))
         .catch((auditError: unknown) => console.warn('[BlindVision] No se pudo registrar OCR:', auditError));
     } catch (error) {
       setCameraError(error instanceof Error ? error.message : 'No se pudo leer el texto.');
       voiceManager.speak('No se pudo leer el texto.', 2);
+      setAnnouncement('Error al leer texto.');
     } finally {
       setIsReadingText(false);
     }
@@ -241,17 +268,25 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
     void terminateOCR();
   }, []);
 
+  const statusText = !cameraActive ? 'Cámara apagada'
+    : isReadingText ? 'Leyendo texto'
+    : loading ? 'Cargando modelo de detección'
+    : cameraError || modelError ? 'Revisa permisos o modelo'
+    : detections.length > 0 ? `Detectando: ${detections.length} objetos`
+    : 'Visión activa';
+
   return (
     <div className="blind-vision-panel" role="region" aria-label="Asistencia visual para personas ciegas">
       <div className="blind-vision-heading">
         <div>
           <h2 className="blind-panel-title">Sentra Visión</h2>
-          <p className="blind-panel-desc">Inferencia en el dispositivo. La cámara se activa a demanda; el primer uso puede requerir Internet para descargar el modelo.</p>
+          <p className="blind-panel-desc">Inferencia local en el dispositivo. La cámara se activa a demanda; el primer uso puede requerir Internet para descargar el modelo.</p>
         </div>
         <span className="blind-vision-status" role="status" aria-live="polite">
-          {!cameraActive ? 'Cámara apagada' : isReadingText ? 'Leyendo texto' : loading ? 'Cargando modelo' : cameraError || modelError ? 'Revisa permisos o modelo' : 'Visión activa'}
+          {statusText}
         </span>
       </div>
+
       <video
         ref={videoRef}
         autoPlay
@@ -262,14 +297,30 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
         tabIndex={-1}
       />
 
-      <div className="blind-vision-actions">
+      <div className="blind-quick-actions">
         <button
-          className="blind-action-btn blind-camera-btn"
+          className="blind-quick-btn blind-quick-btn--camera"
           onClick={toggleCamera}
-          aria-label={cameraActive ? 'Detener cámara' : 'Activar cámara'}
+          aria-label={cameraActive ? 'Detener cámara y detección' : 'Activar cámara y detección de objetos'}
           aria-pressed={cameraActive}
         >
           {cameraActive ? 'Detener cámara' : 'Activar cámara'}
+        </button>
+        <button
+          className="blind-quick-btn blind-quick-btn--describe"
+          onClick={describeNow}
+          disabled={!cameraActive || loading}
+          aria-label="Describir el entorno ahora con voz"
+        >
+          Describir entorno
+        </button>
+        <button
+          className="blind-quick-btn blind-quick-btn--ocr"
+          onClick={() => void handleReadText()}
+          disabled={!cameraActive || isReadingText}
+          aria-label={isReadingText ? 'Leyendo texto, espera' : 'Leer texto de la cámara con OCR'}
+        >
+          {isReadingText ? 'Leyendo...' : 'Leer texto'}
         </button>
       </div>
 
@@ -277,13 +328,20 @@ export const BlindVisionPanel = forwardRef<BlindVisionPanelActions>(function Bli
         <p className="blind-error" role="alert">{cameraError || `No se pudo cargar el modelo local: ${modelError}`}</p>
       )}
 
+      {announcement && (
+        <div className="blind-vision-response" role="status" aria-live="polite">
+          <span className="blind-response-source-tag">Última respuesta</span>
+          <p>{announcement}</p>
+        </div>
+      )}
+
       {cameraActive && !loading && !cameraError && !modelError && detections.length > 0 && (
         <div className="blind-detections" aria-live="polite">
-          <h3 className="blind-detections-title">Detecciones ({detections.length})</h3>
+          <h3 className="blind-detections-title">Objetos detectados ({detections.length})</h3>
           <ul className="blind-detection-list">
             {detections.slice(0, 5).map((d: Detection, i: number) => (
               <li key={i} className="blind-detection-item">
-                <span className="blind-detection-class">{d.class}</span>
+                <span className="blind-detection-class">{labelInSpanish(d.class)}</span>
                 <span className="blind-detection-score">{Math.round(d.score * 100)}%</span>
               </li>
             ))}

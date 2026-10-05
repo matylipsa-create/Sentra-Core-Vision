@@ -563,7 +563,7 @@ body {
 .blind-chip--guardian-on { color: var(--accent); border-color: var(--accent-dark); }
 .blind-chip--guardian-off { color: var(--text-dim); }
 .blind-content { flex: 1; padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); }
-.blind-vision-panel { position: relative; z-index: 20; display: flex; flex-direction: column; gap: var(--space-2); max-width: 1400px; margin: 0 auto; padding: 20px 32px; pointer-events: none; }
+.blind-vision-panel { position: relative; z-index: 20; display: flex; flex-direction: column; gap: var(--space-2); max-width: 900px; margin: 0 auto; padding: 52px 20px 120px; pointer-events: none; }
 .blind-vision-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .blind-vision-status { color: var(--accent); font-size: 0.8rem; }
 .blind-live-video { width: 100%; max-height: 280px; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #050507; object-fit: cover; pointer-events: none; }
@@ -576,7 +576,9 @@ body {
 .blind-vision-actions .blind-action-btn { pointer-events: auto; }
 .blind-voice-entry { position: relative; z-index: 20; display: flex; justify-content: center; padding: 12px 16px; pointer-events: none; }
 .blind-voice-entry > * { pointer-events: auto; }
-.blind-advanced-tools { position: relative; z-index: 20; max-width: 1400px; margin: 12px auto; padding: 0 32px; color: var(--text); }
+.blind-voice-entry .voice-orb { width: 140px; height: 140px; }
+.blind-voice-entry .voice-orb-core { font-size: 2.8rem; }
+.blind-advanced-tools { position: relative; z-index: 20; max-width: 900px; margin: 12px auto; padding: 0 20px 100px; color: var(--text); }
 .blind-advanced-tools summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; color: #c5c5d4; }
 .blind-advanced-tools a { display: inline-flex; align-items: center; min-height: 44px; color: #00ffcc; }
 .blind-advanced-content { padding-top: 8px; }
@@ -660,19 +662,41 @@ body {
 }
 
 /* ═══ BLIND TACTILE QUADRANTS ═══ */
-.blind-tactile-quadrants { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; z-index: 10; pointer-events: none; }
-.blind-quadrant { background: transparent; border: 1px solid rgba(255, 255, 255, 0.03); min-height: 56px; min-width: 56px; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: background 0.15s ease; }
-.blind-quadrant:active { background: rgba(0, 255, 200, 0.12); }
-.blind-quadrant:focus, .blind-quadrant:focus-visible { background: rgba(0, 255, 200, 0.08); outline: 3px solid var(--neon-focus); outline-offset: -3px; }
-.blind-quadrant-top-left { border-top-left-radius: var(--radius); }
-.blind-quadrant-top-right { border-top-right-radius: var(--radius); }
-.blind-quadrant-bottom-left { border-bottom-left-radius: var(--radius); }
-.blind-quadrant-bottom-right { border-bottom-right-radius: var(--radius); }
+.blind-tactile-quadrants { position: fixed; bottom: 0; left: 0; right: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; z-index: 50; pointer-events: none; padding: 4px; background: rgba(0,0,0,0.35); backdrop-filter: blur(4px); border-top: 1px solid rgba(0,255,204,0.15); }
+.blind-quadrant { background: rgba(10,10,15,0.6); border: 1px solid rgba(0,255,204,0.08); min-height: 72px; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: background 0.15s ease, border-color 0.15s ease; display: flex; align-items: center; justify-content: center; }
+.blind-quadrant:active { background: rgba(0, 255, 200, 0.18); border-color: var(--neon-focus); }
+.blind-quadrant:focus, .blind-quadrant:focus-visible { background: rgba(0, 255, 200, 0.1); outline: 3px solid var(--neon-focus); outline-offset: -3px; }
+.blind-quadrant-top-left { border-top-left-radius: var(--radius-sm); }
+.blind-quadrant-top-right { border-top-right-radius: var(--radius-sm); }
+.blind-quadrant-bottom-left { border-bottom-left-radius: var(--radius-sm); }
+.blind-quadrant-bottom-right { border-bottom-right-radius: var(--radius-sm); }
 .blind-quadrant-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 480px) {
   .blind-tactile-quadrants { gap: 1px; }
   .blind-quadrant { min-height: 80px; }
 }
+
+/* ═══ BLIND STATUS LIVE REGION ═══ */
+.blind-status-live { position: fixed; top: 0; left: 0; right: 0; z-index: 60; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 6px 16px; background: rgba(0,0,0,0.55); backdrop-filter: blur(6px); border-bottom: 1px solid rgba(0,255,204,0.12); font-size: 0.78rem; color: #fff; pointer-events: none; min-height: 40px; }
+.blind-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.blind-status-dot--active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.blind-status-dot--standby { background: var(--warning); }
+.blind-status-dot--alert { background: var(--error); box-shadow: 0 0 8px var(--error); animation: pulse 1s infinite; }
+.blind-status-text { font-weight: 600; letter-spacing: 0.02em; }
+.blind-status-badge { padding: 2px 8px; border-radius: 10px; font-size: 0.68rem; font-weight: 700; border: 1px solid rgba(255,255,255,0.1); }
+.blind-status-badge--veto { color: var(--error); border-color: var(--error); }
+.blind-status-badge--evolis { color: var(--primary); border-color: var(--primary-dark); }
+
+/* ═══ BLIND QUICK ACTIONS BAR ═══ */
+.blind-quick-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 600px; margin: 0 auto; }
+.blind-quick-btn { min-height: 56px; min-width: 56px; padding: 12px 20px; border-radius: var(--radius-sm); border: 2px solid var(--primary-dark); background: var(--bg-elevated); color: #fff; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+.blind-quick-btn:hover { border-color: var(--neon-focus); }
+.blind-quick-btn:active { transform: scale(0.96); }
+.blind-quick-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.blind-quick-btn--camera { border-color: var(--accent-dark); color: var(--accent); }
+.blind-quick-btn--describe { border-color: var(--primary-dark); color: var(--primary-light); }
+.blind-quick-btn--ocr { border-color: var(--warning); color: var(--warning); }
+.blind-quick-btn--silence { border-color: var(--error); color: var(--error); }
 
 /* ═══════════════════════════════════════════════════════════════════
    SENTRA VISIÓN SCREEN — v3.1.2-PROT (PLATINO)
