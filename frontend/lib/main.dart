@@ -1,15 +1,13 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'config/accessibility_theme.dart';
-import 'models/navigation_payloads.dart';
 import 'services/accessibility_profile_manager.dart';
 import 'services/camera_duty_cycle_controller.dart';
 import 'services/event_bus.dart';
-import 'screens/home_screen.dart';
+import 'services/haptic_feedback_service.dart';
+import 'screens/main_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,12 +34,16 @@ class SentraVisionApp extends StatelessWidget {
           create: (_) => CameraDutyCycleController(),
           dispose: (_, c) => c.dispose(),
         ),
+        Provider<HapticFeedbackService>(
+          create: (_) => HapticFeedbackService(),
+          dispose: (_, s) => s.dispose(),
+        ),
       ],
       child: MaterialApp(
         title: 'Sentra Visión',
         debugShowCheckedModeBanner: false,
         theme: AccessibilityTheme.theme,
-        home: const HomeScreen(),
+        home: const MainScreen(),
       ),
     );
   }
