@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Abstract interfaces that decouple business logic from platform-specific
 /// hardware plugins. Concrete adapters are registered in [ServiceLocator]
 /// based on the detected platform (Android, Windows, Desktop, Web).
