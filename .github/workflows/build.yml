@@ -44,17 +44,19 @@ jobs:
           flutter.versionName=1.0.0
           EOF
 
-      - name: Install dependencies
+      - name: Clean and Get Dependencies
         working-directory: frontend
-        run: flutter pub get
+        run: |
+          flutter clean
+          flutter pub get
 
       - name: Build APK
         working-directory: frontend
-        run: flutter build apk --release
+        run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sentra-vision-apk
+          name: sentra-vision-release-apk
           path: frontend/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
