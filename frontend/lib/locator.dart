@@ -9,6 +9,9 @@ import 'interfaces/desktop_haptic_adapter.dart';
 import 'interfaces/desktop_tts_adapter.dart';
 import 'interfaces/flutter_tts_adapter.dart';
 import 'interfaces/platform_haptic_adapter.dart';
+import 'services/secure_storage_service.dart';
+import 'services/air_gap_export_service.dart';
+import 'services/evolis_chain_verifier.dart';
 
 /// Platform-conditional service registry.
 ///
@@ -24,6 +27,9 @@ class ServiceLocator {
   static late final IHapticService haptic;
   static late final ICameraService camera;
   static late final bool isMobile;
+  static late final SecureStorageService secureStorage;
+  static late final AirGapExportService airGapExport;
+  static late final EvolisChainVerifier evolisVerifier;
 
   ServiceLocator._();
 
@@ -41,6 +47,10 @@ class ServiceLocator {
       haptic = DesktopHapticAdapter();
       camera = DesktopCameraAdapter();
     }
+
+    secureStorage = SecureStorageService();
+    airGapExport = AirGapExportService(storage: secureStorage);
+    evolisVerifier = EvolisChainVerifier(storage: secureStorage);
   }
 
   /// Human-readable platform name for diagnostics UI.
