@@ -123,7 +123,9 @@ class AlertDispatcherService extends ChangeNotifier {
     }
   }
 
+  @override
   void dispose() {
     _queue.clear();
+    super.dispose();
   }
 }

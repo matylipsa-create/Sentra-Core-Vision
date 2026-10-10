@@ -58,7 +58,6 @@ class AccessibleButton extends StatelessWidget {
           child: Text(
             label,
             textAlign: TextAlign.center,
-            excludeSemantics: true,
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'hardware_interfaces.dart';
 
 /// Desktop / Windows TTS stub that logs to console instead of speaking.

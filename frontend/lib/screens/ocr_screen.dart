@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../config/accessibility_theme.dart';
-import '../services/event_bus.dart';
 import '../models/navigation_payloads.dart';
+import '../services/event_bus.dart';
 import '../widgets/accessible_button.dart';
 
 /// OCR / text reading screen.

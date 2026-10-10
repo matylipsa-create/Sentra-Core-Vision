@@ -3,8 +3,8 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
-import 'event_bus.dart';
 import '../models/navigation_payloads.dart';
+import 'event_bus.dart';
 
 /// Cognitive load level reported by [CognitiveLoadManager].
 enum CognitiveLoadLevel {
@@ -165,8 +165,10 @@ class CognitiveLoadManager extends ChangeNotifier {
 
   int get currentAlertCount => _alertTimestamps.length;
 
+  @override
   void dispose() {
     stop();
     _alertTimestamps.clear();
+    super.dispose();
   }
 }

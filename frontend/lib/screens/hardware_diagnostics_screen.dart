@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../config/accessibility_theme.dart';
+import '../interfaces/hardware_interfaces.dart';
 import '../locator.dart';
 import '../services/tts_audio_service.dart';
 import '../widgets/accessible_button.dart';
@@ -20,13 +21,11 @@ class HardwareDiagnosticsScreen extends StatefulWidget {
       _HardwareDiagnosticsScreenState();
 }
 
-class _HardwareDiagnosticsScreenState
-    extends State<HardwareDiagnosticsScreen> {
+class _HardwareDiagnosticsScreenState extends State<HardwareDiagnosticsScreen> {
   String _ttsStatus = 'Verificando…';
   String _cameraStatus = 'Verificando…';
   String _hapticStatus = 'Verificando…';
   String _platformLabel = '';
-  String _report = '';
 
   @override
   void initState() {
@@ -84,13 +83,19 @@ class _HardwareDiagnosticsScreenState
     buffer.writeln(_hapticStatus);
 
     setState(() {
-      _report = buffer.toString();
+      _platformLabel = ServiceLocator.platformLabel;
     });
 
     // Voice the full report for blind users
     final summary =
         'Plataforma $platformLabelStr. $ttsStatusStr $cameraStatusStr $hapticStatusStr';
     await tts.speak(summary);
+
+    if (mounted) {
+      setState(() {
+        // keep the UI in sync with the latest diagnostic data
+      });
+    }
   }
 
   String get platformLabelStr => _platformLabel;

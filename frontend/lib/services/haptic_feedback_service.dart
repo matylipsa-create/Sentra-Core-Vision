@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../interfaces/hardware_interfaces.dart';
 import '../locator.dart';
 import '../models/navigation_payloads.dart';
 import 'event_bus.dart';
@@ -73,7 +74,7 @@ class HapticFeedbackService {
   /// Used by the deaf-blind profile to convey short messages via touch.
   Future<void> playMorse(String text) async {
     final morse = _textToMorse(text);
-    for (final symbol in morse) {
+    for (final symbol in morse.split('')) {
       if (symbol == '.') {
         await _engine.lightImpact();
         await Future<void>.delayed(const Duration(milliseconds: 150));

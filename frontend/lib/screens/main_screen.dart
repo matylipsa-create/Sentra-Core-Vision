@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../config/accessibility_theme.dart';
+import '../models/navigation_payloads.dart';
 import '../services/accessibility_profile_manager.dart';
 import '../services/haptic_feedback_service.dart';
-import '../widgets/accessible_button.dart';
 import 'hardware_diagnostics_screen.dart';
 import 'obstacle_screen.dart';
 import 'ocr_screen.dart';
@@ -44,7 +44,8 @@ class _MainScreenState extends State<MainScreen> {
       body: SafeArea(
         child: Semantics(
           container: true,
-          label: 'Menú principal de Sentra Visión. Cuatro opciones: Detección de Obstáculos, Lectura OCR, Selector de Perfil, y Configuración de Voz y Háptica.',
+          label:
+              'Menú principal de Sentra Visión. Cuatro opciones: Detección de Obstáculos, Lectura OCR, Selector de Perfil, y Configuración de Voz y Háptica.',
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AccessibilityTheme.space3,
@@ -63,7 +64,7 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildMenuContent(
     BuildContext context,
-    dynamic active,
+    AccessibilityProfilePayload active,
     bool useFixedHeight,
   ) {
     final children = <Widget>[
@@ -161,6 +162,8 @@ class _MainScreenState extends State<MainScreen> {
         return 'Baja Visión';
       case AccessibilityProfileType.deafBlind:
         return 'Sordociego';
+      default:
+        return 'Desconocido';
     }
   }
 }
@@ -224,7 +227,6 @@ class _GiantButton extends StatelessWidget {
                 label,
                 textAlign: TextAlign.center,
                 maxLines: 2,
-                excludeSemantics: true,
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,

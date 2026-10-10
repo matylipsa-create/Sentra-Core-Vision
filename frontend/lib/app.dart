@@ -30,26 +30,21 @@ class SentraApp extends StatelessWidget {
         Provider<SentraEventBus>.value(value: EventBusProvider.instance),
         Provider<ErrorHandler>(
           create: (_) => ErrorHandler(),
-          dispose: (_, h) => h.clearRecent(),
         ),
         ChangeNotifierProvider<AccessibilityProfileManager>(
           create: (_) => AccessibilityProfileManager(),
         ),
         Provider<CameraDutyCycleController>(
           create: (_) => CameraDutyCycleController(),
-          dispose: (_, c) => c.dispose(),
         ),
         Provider<HapticFeedbackService>(
           create: (_) => HapticFeedbackService(),
-          dispose: (_, s) => s.dispose(),
         ),
         ChangeNotifierProvider<TtsAudioService>(
           create: (_) => TtsAudioService(),
-          dispose: (_, s) => s.dispose(),
         ),
         ChangeNotifierProvider<AlertDispatcherService>(
           create: (_) => AlertDispatcherService(),
-          dispose: (_, s) => s.dispose(),
         ),
         ChangeNotifierProvider<SecureStorageService>.value(
           value: ServiceLocator.secureStorage,

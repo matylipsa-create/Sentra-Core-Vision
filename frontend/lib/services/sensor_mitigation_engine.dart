@@ -3,8 +3,8 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
-import 'event_bus.dart';
 import '../models/navigation_payloads.dart';
+import 'event_bus.dart';
 
 /// Severity tier for a mitigation decision.
 enum MitigationSeverity { low, medium, critical }
@@ -198,8 +198,10 @@ class SensorMitigationEngine extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
   void dispose() {
     stop();
     _proximityBuffer.clear();
+    super.dispose();
   }
 }

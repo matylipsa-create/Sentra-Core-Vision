@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
+import '../interfaces/hardware_interfaces.dart';
 import '../locator.dart';
 import '../models/navigation_payloads.dart';
 import 'event_bus.dart';

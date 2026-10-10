@@ -55,8 +55,6 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
                   divisions: 25,
                   activeColor: AccessibilityTheme.primary,
                   thumbColor: AccessibilityTheme.primary,
-                  semanticFormatterValue: (v) =>
-                      'Velocidad ${v.toStringAsFixed(1)}',
                   onChanged: (v) => profileMgr.updateActive(
                     (p) => p.copyWith(ttsRate: v),
                   ),

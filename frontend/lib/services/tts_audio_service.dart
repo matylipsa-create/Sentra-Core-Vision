@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../interfaces/hardware_interfaces.dart';
 import '../locator.dart';
 import '../models/navigation_payloads.dart';
 import 'event_bus.dart';
@@ -130,9 +131,11 @@ class TtsAudioService extends ChangeNotifier {
     );
   }
 
+  @override
   Future<void> dispose() async {
     await _subs.cancelAll();
     await _engine.dispose();
     _initialized = false;
+    super.dispose();
   }
 }
