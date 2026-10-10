@@ -35,6 +35,8 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     final profileMgr = context.watch<AccessibilityProfileManager>();
     final active = profileMgr.active;
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+    final needsScroll = textScale > 1.8;
 
     return Scaffold(
       backgroundColor: AccessibilityTheme.background,
@@ -47,77 +49,92 @@ class _MainScreenState extends State<MainScreen> {
               horizontal: AccessibilityTheme.space3,
               vertical: AccessibilityTheme.space2,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(height: AccessibilityTheme.space2),
-                Text(
-                  'Sentra Visión',
-                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                        color: AccessibilityTheme.primary,
-                      ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: AccessibilityTheme.space1),
-                Semantics(
-                  liveRegion: true,
-                  label:
-                      'Perfil activo: ${_profileLabel(active.type)}. Deslice hacia abajo para ver las cuatro opciones.',
-                  child: Text(
-                    'Perfil: ${_profileLabel(active.type)}',
-                    style: Theme.of(context).textTheme.titleLarge,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                SizedBox(height: AccessibilityTheme.space3),
-                Expanded(
-                  child: _GiantButton(
-                    label: 'Detección de Obstáculos',
-                    hint:
-                        'Activa la cámara y detecta obstáculos cercanos con vibraciones de alerta.',
-                    isPrimary: true,
-                    icon: Icons.radar,
-                    onTap: () => _navigateTo(context, const ObstacleScreen()),
-                  ),
-                ),
-                SizedBox(height: AccessibilityTheme.space2),
-                Expanded(
-                  child: _GiantButton(
-                    label: 'Lectura OCR / Texto',
-                    hint:
-                        'Apunta la cámara a texto para que sea leído en voz alta.',
-                    icon: Icons.document_scanner_outlined,
-                    onTap: () => _navigateTo(context, const OcrScreen()),
-                  ),
-                ),
-                SizedBox(height: AccessibilityTheme.space2),
-                Expanded(
-                  child: _GiantButton(
-                    label: 'Selector de Perfil',
-                    hint:
-                        'Cambia entre Ceguera Total, Baja Visión y Sordociego.',
-                    icon: Icons.accessibility_new,
-                    onTap: () =>
-                        _navigateTo(context, const ProfileSelectorScreen()),
-                  ),
-                ),
-                SizedBox(height: AccessibilityTheme.space2),
-                Expanded(
-                  child: _GiantButton(
-                    label: 'Configuración de Voz y Háptica',
-                    hint:
-                        'Ajusta la velocidad de voz y la intensidad de vibración.',
-                    icon: Icons.settings,
-                    onTap: () =>
-                        _navigateTo(context, const VoiceSettingsScreen()),
-                  ),
-                ),
-                SizedBox(height: AccessibilityTheme.space2),
-              ],
-            ),
+            child: needsScroll
+                ? SingleChildScrollView(
+                    child: _buildMenuContent(context, active, needsScroll),
+                  )
+                : _buildMenuContent(context, active, needsScroll),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildMenuContent(
+    BuildContext context,
+    dynamic active,
+    bool useFixedHeight,
+  ) {
+    final children = <Widget>[
+      SizedBox(height: AccessibilityTheme.space2),
+      Text(
+        'Sentra Visión',
+        style: Theme.of(context).textTheme.displayMedium?.copyWith(
+              color: AccessibilityTheme.primary,
+            ),
+        textAlign: TextAlign.center,
+      ),
+      SizedBox(height: AccessibilityTheme.space1),
+      Semantics(
+        liveRegion: true,
+        label:
+            'Perfil activo: ${_profileLabel(active.type)}. Deslice hacia abajo para ver las cuatro opciones.',
+        child: Text(
+          'Perfil: ${_profileLabel(active.type)}',
+          style: Theme.of(context).textTheme.titleLarge,
+          textAlign: TextAlign.center,
+        ),
+      ),
+      SizedBox(height: AccessibilityTheme.space3),
+    ];
+
+    final buttons = <Widget>[
+      _GiantButton(
+        label: 'Detección de Obstáculos',
+        hint:
+            'Activa la cámara y detecta obstáculos cercanos con vibraciones de alerta.',
+        isPrimary: true,
+        icon: Icons.radar,
+        onTap: () => _navigateTo(context, const ObstacleScreen()),
+      ),
+      _GiantButton(
+        label: 'Lectura OCR / Texto',
+        hint: 'Apunta la cámara a texto para que sea leído en voz alta.',
+        icon: Icons.document_scanner_outlined,
+        onTap: () => _navigateTo(context, const OcrScreen()),
+      ),
+      _GiantButton(
+        label: 'Selector de Perfil',
+        hint: 'Cambia entre Ceguera Total, Baja Visión y Sordociego.',
+        icon: Icons.accessibility_new,
+        onTap: () => _navigateTo(context, const ProfileSelectorScreen()),
+      ),
+      _GiantButton(
+        label: 'Configuración de Voz y Háptica',
+        hint: 'Ajusta la velocidad de voz y la intensidad de vibración.',
+        icon: Icons.settings,
+        onTap: () => _navigateTo(context, const VoiceSettingsScreen()),
+      ),
+    ];
+
+    if (useFixedHeight) {
+      for (final btn in buttons) {
+        children.add(Padding(
+          padding: const EdgeInsets.only(bottom: AccessibilityTheme.space2),
+          child: btn,
+        ));
+      }
+    } else {
+      for (final btn in buttons) {
+        children.add(SizedBox(height: AccessibilityTheme.space2));
+        children.add(Expanded(child: btn));
+      }
+      children.add(SizedBox(height: AccessibilityTheme.space2));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
     );
   }
 
@@ -198,6 +215,7 @@ class _GiantButton extends StatelessWidget {
                 label,
                 textAlign: TextAlign.center,
                 maxLines: 2,
+                excludeSemantics: true,
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,

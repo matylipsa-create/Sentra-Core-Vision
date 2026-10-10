@@ -58,8 +58,31 @@ class SentraVisionApp extends StatelessWidget {
         title: 'Sentra Visión',
         debugShowCheckedModeBanner: false,
         theme: AccessibilityTheme.theme,
-        home: const MainScreen(),
+        home: const _TtsInit(child: MainScreen()),
       ),
     );
   }
+}
+
+/// Initializes [TtsAudioService.start()] once the provider tree is available.
+class _TtsInit extends StatefulWidget {
+  final Widget child;
+
+  const _TtsInit({required this.child});
+
+  @override
+  State<_TtsInit> createState() => _TtsInitState();
+}
+
+class _TtsInitState extends State<_TtsInit> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<TtsAudioService>().start();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

@@ -44,6 +44,17 @@ function normalize(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/g;
+
+function escapeRegex(text: string): string {
+  return text.replace(REGEX_SPECIAL, (ch) => '\\' + ch);
+}
+
+function matchesKeyword(text: string, keyword: string): boolean {
+  const pattern = new RegExp('\\b' + escapeRegex(keyword) + '\\b', 'i');
+  return pattern.test(text);
+}
+
 export class MoralNode {
   private humanVetoActive = false;
 
@@ -64,7 +75,7 @@ export class MoralNode {
     const decisions: MoralDecision[] = [];
     const timestamp = Date.now();
 
-    const hasViolence = VIOLENCE_KEYWORDS.some((kw) => lower.includes(normalize(kw)));
+    const hasViolence = VIOLENCE_KEYWORDS.some((kw) => matchesKeyword(lower, normalize(kw)));
     decisions.push({
       rule: 'NO_VIOLENCE',
       passed: !hasViolence,
@@ -73,7 +84,7 @@ export class MoralNode {
         : 'Sin indicadores de violencia',
     });
 
-    const hasPrivacy = PRIVACY_KEYWORDS.some((kw) => lower.includes(normalize(kw)));
+    const hasPrivacy = PRIVACY_KEYWORDS.some((kw) => matchesKeyword(lower, normalize(kw)));
     decisions.push({
       rule: 'PRIVACY_FIRST',
       passed: !hasPrivacy,

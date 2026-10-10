@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../config/accessibility_theme.dart';
 import '../services/camera_duty_cycle_controller.dart';
 import '../services/haptic_feedback_service.dart';
+import '../services/tts_audio_service.dart';
 import '../widgets/accessible_button.dart';
 
 /// Obstacle detection screen — starts/stops the camera duty cycle and
@@ -17,7 +18,17 @@ class ObstacleScreen extends StatefulWidget {
 
 class _ObstacleScreenState extends State<ObstacleScreen> {
   bool _active = false;
-  String _statusText = 'Cámara inactiva';
+  String _statusText =
+      'Modo de simulación — Detección de proximidad activa en modo prueba. '
+      'No utilizar como único sistema de navegación autónoma.';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<TtsAudioService>().start();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,16 +86,21 @@ class _ObstacleScreenState extends State<ObstacleScreen> {
                 isPrimary: true,
                 onTap: () {
                   final haptic = context.read<HapticFeedbackService>();
+                  final tts = context.read<TtsAudioService>();
                   setState(() {
                     if (_active) {
                       controller.stop();
                       _active = false;
-                      _statusText = 'Cámara inactiva';
+                      _statusText =
+                          'Modo de simulación detenido. Cámara inactiva.';
                     } else {
                       controller.start((_) => double.infinity);
                       haptic.start();
+                      tts.start();
                       _active = true;
-                      _statusText = 'Cámara activa — procesando';
+                      _statusText =
+                          'Modo de simulación — Detección de proximidad activa en modo prueba. '
+                          'No utilizar como único sistema de navegación autónoma.';
                     }
                   });
                 },

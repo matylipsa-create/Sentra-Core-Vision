@@ -311,7 +311,8 @@ export class EVOLIS {
   }
 
   importState(entries: EVOLISEvidence[]): void {
-    this.entries = JSON.parse(JSON.stringify(entries));
+    const sorted = [...entries].sort((a, b) => a.entry.index - b.entry.index);
+    this.entries = JSON.parse(JSON.stringify(sorted));
     this.lastVerifiedIndex = -1;
     this.lastVerifiedState = true;
   }

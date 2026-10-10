@@ -63,23 +63,25 @@ export function BlindUnifiedUI({ telemetry }: BlindUnifiedUIProps) {
     const normalized = command.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const visionActions = visionActionsRef.current;
 
-    if (/(activa|inicia|enciende).*(camara|vision)/.test(normalized)) {
-      visionActions?.setCamera(true);
-      return true;
-    }
+    // Evaluate desactiva/desactivá BEFORE activa/activá to prevent false triggers
     if (/(desactiva|deten|apaga|para).*(camara|vision)/.test(normalized)) {
       visionActions?.setCamera(false);
       return true;
     }
-    if (/(lee|leer|lectura).*(texto|cartel|letrero)/.test(normalized)) {
+    if (/(activa|inicia|enciende).*(camara|vision)/.test(normalized)) {
+      visionActions?.setCamera(true);
+      return true;
+    }
+    // Voseo argentino (es-AR): describime, leeme, decime, contame
+    if (/(leeme|lee|leer|lectura).*(texto|cartel|letrero)/.test(normalized)) {
       visionActions?.readText();
       return true;
     }
-    if (/(describe|descripcion|que ves|que hay delante|que hay enfrente)/.test(normalized)) {
+    if (/(describime|describe|descripcion|contame|que ves|que hay delante|que hay enfrente)/.test(normalized)) {
       visionActions?.describeNow();
       return true;
     }
-    if (/(silencio|calla|deja de hablar)/.test(normalized)) {
+    if (/(decime|silencio|calla|deja de hablar)/.test(normalized)) {
       sentraGuardianHub.silenceAll();
       if (isPassiveListening) togglePassiveListening();
       return true;
