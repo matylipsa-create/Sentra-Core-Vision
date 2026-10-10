@@ -9,6 +9,7 @@ import '../widgets/accessible_button.dart';
 import 'obstacle_screen.dart';
 import 'ocr_screen.dart';
 import 'profile_selector_screen.dart';
+import 'tactical_ops_screen.dart';
 import 'voice_settings_screen.dart';
 
 /// Main navigation hub with four giant accessible buttons.
@@ -103,6 +104,14 @@ class _MainScreenState extends State<MainScreen> {
                             'Ajusta la velocidad de voz y la intensidad de vibración.',
                         onTap: () => _navigateTo(context,
                             const VoiceSettingsScreen()),
+                      ),
+                      SizedBox(height: AccessibilityTheme.space2),
+                      AccessibleButton(
+                        label: 'Operaciones Tácticas',
+                        hint:
+                            'Visualiza tu estado mental, misiones activas y craftea objetos.',
+                        onTap: () => _navigateTo(context,
+                            const TacticalOpsScreen()),
                       ),
                     ],
                   ),

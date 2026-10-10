@@ -43,6 +43,34 @@ class ProfileChangedEvent extends SentraEvent {
   ProfileChangedEvent(this.profileId, this.type, this.timestamp);
 }
 
+class MindStateChangedEvent extends SentraEvent {
+  final double stability;
+  final String stateMode;
+  final double breachExposure;
+  @override
+  final int timestamp;
+  MindStateChangedEvent(
+      this.stability, this.stateMode, this.breachExposure, this.timestamp);
+}
+
+class MissionUpdatedEvent extends SentraEvent {
+  final String missionId;
+  final String status;
+  @override
+  final int timestamp;
+  MissionUpdatedEvent(this.missionId, this.status, this.timestamp);
+}
+
+class ItemCraftedEvent extends SentraEvent {
+  final String itemKey;
+  final String displayName;
+  final int lootCost;
+  @override
+  final int timestamp;
+  ItemCraftedEvent(
+      this.itemKey, this.displayName, this.lootCost, this.timestamp);
+}
+
 /// Global decoupled event bus. Sensors (camera, voice, TTS) publish events;
 /// UI and services subscribe to the payload types they care about.
 ///

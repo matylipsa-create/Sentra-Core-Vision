@@ -5,8 +5,11 @@ import 'package:provider/provider.dart';
 import 'config/accessibility_theme.dart';
 import 'services/accessibility_profile_manager.dart';
 import 'services/camera_duty_cycle_controller.dart';
+import 'services/crafting_service.dart';
 import 'services/event_bus.dart';
 import 'services/haptic_feedback_service.dart';
+import 'services/node_mission_service.dart';
+import 'services/operator_mind_manager.dart';
 import 'screens/main_screen.dart';
 
 void main() {
@@ -36,6 +39,18 @@ class SentraVisionApp extends StatelessWidget {
         ),
         Provider<HapticFeedbackService>(
           create: (_) => HapticFeedbackService(),
+          dispose: (_, s) => s.dispose(),
+        ),
+        ChangeNotifierProvider<OperatorMindManager>(
+          create: (_) => OperatorMindManager(),
+          dispose: (_, m) => m.dispose(),
+        ),
+        ChangeNotifierProvider<NodeMissionService>(
+          create: (_) => NodeMissionService(),
+          dispose: (_, s) => s.dispose(),
+        ),
+        ChangeNotifierProvider<CraftingService>(
+          create: (_) => CraftingService(),
           dispose: (_, s) => s.dispose(),
         ),
       ],
