@@ -11,9 +11,12 @@ import 'services/event_bus.dart';
 import 'services/haptic_feedback_service.dart';
 import 'services/alert_dispatcher_service.dart';
 import 'services/air_gap_export_service.dart';
+import 'services/cognitive_load_manager.dart';
 import 'services/evolis_chain_verifier.dart';
 import 'services/secure_storage_service.dart';
+import 'services/sensor_mitigation_engine.dart';
 import 'services/tts_audio_service.dart';
+import 'services/zero_allocation_frame_loop.dart';
 import 'screens/main_screen.dart';
 
 void main() {
@@ -67,6 +70,15 @@ class SentraVisionApp extends StatelessWidget {
         ChangeNotifierProvider<EvolisChainVerifier>.value(
           value: ServiceLocator.evolisVerifier,
         ),
+        ChangeNotifierProvider<CognitiveLoadManager>.value(
+          value: ServiceLocator.cognitiveLoad,
+        ),
+        ChangeNotifierProvider<SensorMitigationEngine>.value(
+          value: ServiceLocator.sensorMitigation,
+        ),
+        Provider<ZeroAllocationFrameLoop>.value(
+          value: ServiceLocator.frameLoop,
+        ),
       ],
       child: MaterialApp(
         title: 'Sentra Visión',
@@ -95,6 +107,8 @@ class _TtsInitState extends State<_TtsInit> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<TtsAudioService>().start();
       ServiceLocator.evolisVerifier.verifyOnStartup();
+      ServiceLocator.cognitiveLoad.start();
+      ServiceLocator.sensorMitigation.start();
     });
   }
 

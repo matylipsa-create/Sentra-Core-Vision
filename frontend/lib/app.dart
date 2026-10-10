@@ -10,9 +10,12 @@ import 'services/event_bus.dart';
 import 'services/haptic_feedback_service.dart';
 import 'services/alert_dispatcher_service.dart';
 import 'services/air_gap_export_service.dart';
+import 'services/cognitive_load_manager.dart';
 import 'services/evolis_chain_verifier.dart';
 import 'services/secure_storage_service.dart';
+import 'services/sensor_mitigation_engine.dart';
 import 'services/tts_audio_service.dart';
+import 'services/zero_allocation_frame_loop.dart';
 import 'screens/main_screen.dart';
 
 /// Widget raiz de Sentra Vision — arquitectura nativa accesible.
@@ -56,6 +59,15 @@ class SentraApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<EvolisChainVerifier>.value(
           value: ServiceLocator.evolisVerifier,
+        ),
+        ChangeNotifierProvider<CognitiveLoadManager>.value(
+          value: ServiceLocator.cognitiveLoad,
+        ),
+        ChangeNotifierProvider<SensorMitigationEngine>.value(
+          value: ServiceLocator.sensorMitigation,
+        ),
+        Provider<ZeroAllocationFrameLoop>.value(
+          value: ServiceLocator.frameLoop,
         ),
       ],
       child: MaterialApp(

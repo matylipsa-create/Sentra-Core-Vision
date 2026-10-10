@@ -12,6 +12,9 @@ import 'interfaces/platform_haptic_adapter.dart';
 import 'services/secure_storage_service.dart';
 import 'services/air_gap_export_service.dart';
 import 'services/evolis_chain_verifier.dart';
+import 'services/cognitive_load_manager.dart';
+import 'services/sensor_mitigation_engine.dart';
+import 'services/zero_allocation_frame_loop.dart';
 
 /// Platform-conditional service registry.
 ///
@@ -30,6 +33,9 @@ class ServiceLocator {
   static late final SecureStorageService secureStorage;
   static late final AirGapExportService airGapExport;
   static late final EvolisChainVerifier evolisVerifier;
+  static late final CognitiveLoadManager cognitiveLoad;
+  static late final SensorMitigationEngine sensorMitigation;
+  static late final ZeroAllocationFrameLoop frameLoop;
 
   ServiceLocator._();
 
@@ -51,6 +57,9 @@ class ServiceLocator {
     secureStorage = SecureStorageService();
     airGapExport = AirGapExportService(storage: secureStorage);
     evolisVerifier = EvolisChainVerifier(storage: secureStorage);
+    cognitiveLoad = CognitiveLoadManager();
+    sensorMitigation = SensorMitigationEngine();
+    frameLoop = ZeroAllocationFrameLoop();
   }
 
   /// Human-readable platform name for diagnostics UI.

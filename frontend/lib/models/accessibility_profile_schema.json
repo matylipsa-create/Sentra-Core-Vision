@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Sentra Vision Accessibility Profile Schema",
+  "description": "External JSON configuration for accessibility thresholds, TTS rates, haptic delays, and cognitive load tolerance per profile.",
+  "type": "object",
+  "required": ["profiles"],
+  "properties": {
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["profileId", "type", "tts", "haptic", "proximityThresholdM", "cognitiveLoad"],
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": ["blind", "lowVision", "deafBlind"]
+          },
+          "tts": {
+            "type": "object",
+            "required": ["enabled", "rate"],
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "rate": { "type": "number", "minimum": 0.1, "maximum": 4.0 },
+              "morseMode": { "type": "boolean", "default": false }
+            }
+          },
+          "haptic": {
+            "type": "object",
+            "required": ["enabled", "baselineIntensity"],
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "baselineIntensity": {
+                "type": "string",
+                "enum": ["light", "medium", "strong", "critical"]
+              },
+              "vibrationDelayMs": { "type": "integer", "minimum": 0, "default": 0 }
+            }
+          },
+          "proximityThresholdM": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 10.0,
+            "default": 1.5
+          },
+          "uiScale": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 4.0,
+            "default": 1.5
+          },
+          "cognitiveLoad": {
+            "type": "object",
+            "required": ["elevatedThreshold", "criticalThreshold"],
+            "properties": {
+              "elevatedThreshold": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Alerts per 10-second window that triggers elevated load."
+              },
+              "criticalThreshold": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Alerts per 10-second window that triggers critical (streamlined) mode."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
