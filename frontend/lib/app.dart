@@ -7,8 +7,10 @@ import 'services/camera_duty_cycle_controller.dart';
 import 'services/crafting_service.dart';
 import 'services/event_bus.dart';
 import 'services/haptic_feedback_service.dart';
+import 'services/alert_dispatcher_service.dart';
 import 'services/node_mission_service.dart';
 import 'services/operator_mind_manager.dart';
+import 'services/tts_audio_service.dart';
 import 'screens/main_screen.dart';
 
 /// Widget raiz de Sentra Vision — arquitectura nativa accesible.
@@ -41,6 +43,14 @@ class SentraApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<CraftingService>(
           create: (_) => CraftingService(),
+          dispose: (_, s) => s.dispose(),
+        ),
+        ChangeNotifierProvider<TtsAudioService>(
+          create: (_) => TtsAudioService(),
+          dispose: (_, s) => s.dispose(),
+        ),
+        ChangeNotifierProvider<AlertDispatcherService>(
+          create: (_) => AlertDispatcherService(),
           dispose: (_, s) => s.dispose(),
         ),
       ],

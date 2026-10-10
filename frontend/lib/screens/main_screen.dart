@@ -9,6 +9,7 @@ import '../widgets/accessible_button.dart';
 import 'obstacle_screen.dart';
 import 'ocr_screen.dart';
 import 'profile_selector_screen.dart';
+import 'mission_node_screen.dart';
 import 'tactical_ops_screen.dart';
 import 'voice_settings_screen.dart';
 
@@ -112,6 +113,15 @@ class _MainScreenState extends State<MainScreen> {
                             'Visualiza tu estado mental, misiones activas y craftea objetos.',
                         onTap: () => _navigateTo(context,
                             const TacticalOpsScreen()),
+                      ),
+                      SizedBox(height: AccessibilityTheme.space2),
+                      AccessibleButton(
+                        label: 'Nodos de Misión',
+                        hint:
+                            'Explora nodos geográficos, activa misiones, calcula rutas y dispara alertas.',
+                        isPrimary: true,
+                        onTap: () => _navigateTo(context,
+                            const MissionNodeScreen()),
                       ),
                     ],
                   ),
