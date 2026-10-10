@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'config/accessibility_theme.dart';
+import 'locator.dart';
 import 'services/accessibility_profile_manager.dart';
 import 'services/camera_duty_cycle_controller.dart';
 import 'services/error_handler.dart';
@@ -12,6 +13,7 @@ import 'services/tts_audio_service.dart';
 import 'screens/main_screen.dart';
 
 /// Widget raiz de Sentra Vision — arquitectura nativa accesible.
+/// Call [ServiceLocator.init()] before building this widget.
 class SentraApp extends StatelessWidget {
   const SentraApp({super.key});
 

@@ -1,7 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/services.dart';
-
+import '../locator.dart';
 import '../models/navigation_payloads.dart';
 import 'event_bus.dart';
 
@@ -9,15 +8,19 @@ import 'event_bus.dart';
 /// vibrations for the deaf-blind profile and proximity-scaled pulses
 /// from the camera duty cycle controller.
 ///
+/// Delegates all native vibration calls to the [IHapticService] adapter
+/// registered in [ServiceLocator], making it fully platform-agnostic.
 /// Listens to `haptic` events on the bus and translates each [HapticPayload]
-/// into a timed sequence of vibration bursts via [HapticFeedback].
+/// into a timed sequence of vibration bursts.
 class HapticFeedbackService {
   final SentraEventBus _bus;
+  final IHapticService _engine;
   StreamSubscription<SentraEvent>? _subscription;
   bool _active = false;
 
-  HapticFeedbackService({SentraEventBus? bus})
-      : _bus = bus ?? EventBusProvider.instance;
+  HapticFeedbackService({SentraEventBus? bus, IHapticService? engine})
+      : _bus = bus ?? EventBusProvider.instance,
+        _engine = engine ?? ServiceLocator.haptic;
 
   bool get isActive => _active;
 
@@ -48,16 +51,16 @@ class HapticFeedbackService {
     for (final durationMs in payload.pattern) {
       switch (payload.intensity) {
         case HapticIntensity.light:
-          await HapticFeedback.lightImpact();
+          await _engine.lightImpact();
           break;
         case HapticIntensity.medium:
-          await HapticFeedback.mediumImpact();
+          await _engine.mediumImpact();
           break;
         case HapticIntensity.strong:
-          await HapticFeedback.heavyImpact();
+          await _engine.heavyImpact();
           break;
         case HapticIntensity.critical:
-          await HapticFeedback.vibrate();
+          await _engine.vibrate();
           break;
       }
       await Future<void>.delayed(Duration(milliseconds: durationMs));
@@ -72,10 +75,10 @@ class HapticFeedbackService {
     final morse = _textToMorse(text);
     for (final symbol in morse) {
       if (symbol == '.') {
-        await HapticFeedback.lightImpact();
+        await _engine.lightImpact();
         await Future<void>.delayed(const Duration(milliseconds: 150));
       } else if (symbol == '-') {
-        await HapticFeedback.mediumImpact();
+        await _engine.mediumImpact();
         await Future<void>.delayed(const Duration(milliseconds: 400));
       } else if (symbol == ' ') {
         await Future<void>.delayed(const Duration(milliseconds: 700));

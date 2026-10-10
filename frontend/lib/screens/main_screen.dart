@@ -5,6 +5,7 @@ import '../config/accessibility_theme.dart';
 import '../services/accessibility_profile_manager.dart';
 import '../services/haptic_feedback_service.dart';
 import '../widgets/accessible_button.dart';
+import 'hardware_diagnostics_screen.dart';
 import 'obstacle_screen.dart';
 import 'ocr_screen.dart';
 import 'profile_selector_screen.dart';
@@ -114,6 +115,14 @@ class _MainScreenState extends State<MainScreen> {
         hint: 'Ajusta la velocidad de voz y la intensidad de vibración.',
         icon: Icons.settings,
         onTap: () => _navigateTo(context, const VoiceSettingsScreen()),
+      ),
+      _GiantButton(
+        label: 'Diagnóstico de Hardware',
+        hint:
+            'Verifica el estado del motor de voz, la cámara y la vibración.',
+        icon: Icons.health_and_safety_outlined,
+        onTap: () =>
+            _navigateTo(context, const HardwareDiagnosticsScreen()),
       ),
     ];
 

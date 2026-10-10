@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-
+import '../locator.dart';
 import '../models/navigation_payloads.dart';
 import 'event_bus.dart';
 
@@ -17,6 +15,7 @@ import 'event_bus.dart';
 /// Emits JSON `camera_frame` and `haptic` events on the bus.
 class CameraDutyCycleController {
   final SentraEventBus _bus;
+  final IHapticService _haptic;
 
   final double _minFps;
   final double _maxFps;
@@ -32,12 +31,14 @@ class CameraDutyCycleController {
 
   CameraDutyCycleController({
     SentraEventBus? bus,
+    IHapticService? haptic,
     double minFps = 2,
     double maxFps = 5,
     double alertMaxFps = 10,
     double proximityThresholdM = 1.5,
     int bufferSize = 5,
   })  : _bus = bus ?? EventBusProvider.instance,
+        _haptic = haptic ?? ServiceLocator.haptic,
         _minFps = minFps,
         _maxFps = maxFps,
         _alertMaxFps = alertMaxFps,
@@ -145,11 +146,11 @@ class CameraDutyCycleController {
     final pattern = _hapticPattern(intensity);
 
     if (intensity == HapticIntensity.critical) {
-      HapticFeedback.heavyImpact();
+      _haptic.heavyImpact();
     } else if (intensity == HapticIntensity.strong) {
-      HapticFeedback.mediumImpact();
+      _haptic.mediumImpact();
     } else {
-      HapticFeedback.lightImpact();
+      _haptic.lightImpact();
     }
 
     _bus.emit(

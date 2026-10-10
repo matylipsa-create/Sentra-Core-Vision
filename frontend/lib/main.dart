@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'config/accessibility_theme.dart';
+import 'locator.dart';
 import 'services/accessibility_profile_manager.dart';
 import 'services/camera_duty_cycle_controller.dart';
 import 'services/error_handler.dart';
@@ -14,6 +15,7 @@ import 'screens/main_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  ServiceLocator.init();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

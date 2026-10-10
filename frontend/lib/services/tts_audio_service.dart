@@ -1,15 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 
+import '../locator.dart';
 import '../models/navigation_payloads.dart';
 import 'event_bus.dart';
 
 /// Adaptive text-to-speech service for accessibility feedback.
 ///
-/// Configured for Spanish (es-AR) with a base speech rate of 0.5 for clarity,
-/// full volume, and pitch 1.0. Implements priority-based interruption:
+/// Delegates all native TTS calls to the [ITtsService] adapter registered
+/// in [ServiceLocator], making it fully platform-agnostic. Configured for
+/// Spanish (es-AR) with a base speech rate of 0.5 for clarity, full volume,
+/// and pitch 1.0. Implements priority-based interruption:
 /// [TtsPriority.critical] alerts cancel any current speech before speaking,
 /// while lower-priority messages queue or are dropped if a critical message
 /// is already in progress.
@@ -19,7 +21,7 @@ import 'event_bus.dart';
 /// - `camera_frame` events — speaks proximity warnings when obstacles are close.
 class TtsAudioService extends ChangeNotifier {
   final SentraEventBus _bus;
-  final FlutterTts _tts = FlutterTts();
+  final ITtsService _engine;
 
   final EventSubscriptions _subs = EventSubscriptions();
   bool _initialized = false;
@@ -30,8 +32,9 @@ class TtsAudioService extends ChangeNotifier {
   static const double _baseVolume = 1.0;
   static const double _basePitch = 1.0;
 
-  TtsAudioService({SentraEventBus? bus})
-      : _bus = bus ?? EventBusProvider.instance;
+  TtsAudioService({SentraEventBus? bus, ITtsService? engine})
+      : _bus = bus ?? EventBusProvider.instance,
+        _engine = engine ?? ServiceLocator.tts;
 
   bool get isSpeaking => _speaking;
   bool get isInitialized => _initialized;
@@ -40,21 +43,22 @@ class TtsAudioService extends ChangeNotifier {
     if (_initialized) return;
     _initialized = true;
 
-    await _tts.setLanguage('es-AR');
-    await _tts.setSpeechRate(_baseRate);
-    await _tts.setVolume(_baseVolume);
-    await _tts.setPitch(_basePitch);
+    await _engine.initialize();
+    await _engine.setLanguage('es-AR');
+    await _engine.setSpeechRate(_baseRate);
+    await _engine.setVolume(_baseVolume);
+    await _engine.setPitch(_basePitch);
 
-    _tts.setStartHandler(() {
+    _engine.setStartHandler(() {
       _speaking = true;
       notifyListeners();
     });
-    _tts.setCompletionHandler(() {
+    _engine.setCompletionHandler(() {
       _speaking = false;
       _currentPriority = null;
       notifyListeners();
     });
-    _tts.setErrorHandler((_) {
+    _engine.setErrorHandler((_) {
       _speaking = false;
       _currentPriority = null;
       notifyListeners();
@@ -66,7 +70,7 @@ class TtsAudioService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
-    await _tts.stop();
+    await _engine.stop();
     _speaking = false;
     _currentPriority = null;
     notifyListeners();
@@ -82,14 +86,14 @@ class TtsAudioService extends ChangeNotifier {
     if (_speaking) {
       final shouldInterrupt = _shouldInterrupt(_currentPriority, priority);
       if (!shouldInterrupt) return;
-      await _tts.stop();
+      await _engine.stop();
       _speaking = false;
     }
 
     _currentPriority = priority;
     final effectiveRate = rate ?? _baseRate;
-    await _tts.setSpeechRate(effectiveRate);
-    await _tts.speak(text);
+    await _engine.setSpeechRate(effectiveRate);
+    await _engine.speak(text);
   }
 
   bool _shouldInterrupt(TtsPriority? current, TtsPriority incoming) {
@@ -128,7 +132,7 @@ class TtsAudioService extends ChangeNotifier {
 
   Future<void> dispose() async {
     await _subs.cancelAll();
-    await _tts.stop();
+    await _engine.dispose();
     _initialized = false;
   }
 }
