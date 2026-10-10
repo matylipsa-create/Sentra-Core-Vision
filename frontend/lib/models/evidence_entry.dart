@@ -24,6 +24,14 @@ class HashChainEntry {
       data: json['data'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'index': index,
+        'hash': hash,
+        'previousHash': previousHash,
+        'timestamp': timestamp,
+        'data': data,
+      };
 }
 
 class EvidenceEntry {
@@ -47,4 +55,11 @@ class EvidenceEntry {
       action: json['action'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'entry': entry.toJson(),
+        'module': module,
+        'action': action,
+      };
 }

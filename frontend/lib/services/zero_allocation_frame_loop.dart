@@ -83,8 +83,8 @@ class ZeroAllocationFrameLoop {
   final int _bufferSize;
   final int _maxDetections;
 
-  late final List<ReusableFrame> _framePool;
-  late final Float64List _distanceBuffer;
+  List<ReusableFrame> _framePool = [];
+  final Float64List _distanceBuffer;
   int _distanceHead = 0;
   int _distanceCount = 0;
   int _poolIndex = 0;
@@ -188,5 +188,9 @@ class ZeroAllocationFrameLoop {
     _framePool = [];
     _distanceHead = 0;
     _distanceCount = 0;
+  }
+
+  void dispose() {
+    endSession();
   }
 }

@@ -50,6 +50,14 @@ jobs:
           flutter clean
           flutter pub get
 
+      - name: Analyze Dart Code
+        working-directory: frontend
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run Flutter Tests
+        working-directory: frontend
+        run: flutter test
+
       - name: Build APK
         working-directory: frontend
         run: flutter build apk --release --no-tree-shake-icons
