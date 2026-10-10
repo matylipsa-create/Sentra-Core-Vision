@@ -14,6 +14,7 @@ import 'event_bus.dart';
 ///   high-intensity haptic feedback that increases as distance shrinks.
 ///
 /// A circular buffer smooths distance readings to suppress false positives.
+/// Emits JSON `camera_frame` and `haptic` events on the bus.
 class CameraDutyCycleController {
   final SentraEventBus _bus;
 
@@ -48,9 +49,6 @@ class CameraDutyCycleController {
   bool get isRunning => _running;
   double get smoothedDistance => _smoothedDistance();
 
-  /// Begins the duty cycle. [frameCallback] is invoked on each tick and
-  /// should return the detected nearest-obstacle distance in meters, or
-  /// [double.infinity] if no obstacle is seen.
   void start(FutureOr<double> Function(int frameId) frameCallback) {
     if (_running) return;
     _running = true;
@@ -90,25 +88,25 @@ class CameraDutyCycleController {
     final obstacleClose = smoothed <= _proximityThresholdM;
 
     if (obstacleClose) {
-      _currentFps = _lerp(_maxFps, _alertMaxFps,
-          _proximityFactor(smoothed));
+      _currentFps = _lerp(_maxFps, _alertMaxFps, _proximityFactor(smoothed));
       _emitHaptic(smoothed);
     } else {
-      _currentFps = _lerp(_minFps, _maxFps,
-          _normalFactor(smoothed));
+      _currentFps = _lerp(_minFps, _maxFps, _normalFactor(smoothed));
     }
 
-    _bus.publish(CameraFrameEvent(
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _bus.emit(
+      SentraEventType.cameraFrame,
       CameraFramePayload(
         frameId: frameId,
         fps: _currentFps,
         obstacleProximity: obstacleClose,
         estimatedDistanceMeters: smoothed.isFinite ? smoothed : -1,
         detections: const [],
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-      ),
-      DateTime.now().millisecondsSinceEpoch,
-    ));
+        timestamp: now,
+      ).toJson(),
+      now,
+    );
   }
 
   void _pushDistance(double distance) {
@@ -124,16 +122,12 @@ class CameraDutyCycleController {
     return sorted[sorted.length ~/ 2];
   }
 
-  /// 0 at threshold, 1 at 0 m — drives FPS and haptic intensity up as
-  /// the obstacle gets closer.
   double _proximityFactor(double distance) {
     if (distance <= 0) return 1;
     final factor = 1 - (distance / _proximityThresholdM);
     return factor.clamp(0.0, 1.0);
   }
 
-  /// 0 far away, 1 approaching threshold — gently ramps FPS within the
-  /// normal 2-5 range as objects get closer but are still > 1.5 m.
   double _normalFactor(double distance) {
     if (distance.isInfinite) return 0;
     const farBound = 5.0;
@@ -158,14 +152,14 @@ class CameraDutyCycleController {
       HapticFeedback.lightImpact();
     }
 
-    _bus.publish(HapticEvent(
+    _bus.emit(
+      SentraEventType.haptic,
       HapticPayload(
         intensity: intensity,
         pattern: pattern,
         reason: 'obstacle_proximity',
-      ),
-      DateTime.now().millisecondsSinceEpoch,
-    ));
+      ).toJson(),
+    );
   }
 
   HapticIntensity _intensityForFactor(double factor) {

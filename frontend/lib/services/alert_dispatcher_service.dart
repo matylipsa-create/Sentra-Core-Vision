@@ -1,17 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 import 'event_bus.dart';
 
-/// Offline-first alert dispatch service.
+/// Offline-first alert dispatch service for emergency location alerts.
 ///
-/// Sends geolocated alert payloads (operator callsign, node_id, coordinates,
-/// mind_state, timestamp) to a configurable webhook URL (e.g. a Telegram bot
-/// gateway or any HTTP webhook). On network failure, returns false and queues
+/// Sends geolocated alert payloads (user ID, coordinates, timestamp) to a
+/// configurable webhook URL. On network failure, returns false and queues
 /// the payload locally for later retry via [flushQueue].
+///
+/// Uses [HttpClient] from dart:io — no external HTTP dependency required.
 class AlertDispatcherService extends ChangeNotifier {
   final SentraEventBus _bus;
   final String _webhookUrl;
@@ -33,27 +34,23 @@ class AlertDispatcherService extends ChangeNotifier {
   int get queueLength => _queue.length;
   bool get isDispatching => _dispatching;
 
-  /// Dispatches an alert payload to the webhook.
+  /// Dispatches an emergency alert with geolocation to the webhook.
   ///
   /// Returns true on success, false on network failure (payload is queued
   /// for later retry).
   Future<bool> dispatch({
-    required String operatorCallsign,
-    required String nodeId,
+    required String userId,
     required double latitude,
     required double longitude,
-    required String mindState,
     String source = 'sentra_vision',
   }) async {
     final payload = {
       'source': source,
-      'operator': operatorCallsign,
-      'node_id': nodeId,
+      'user_id': userId,
       'coordinates': {
         'lat': latitude,
         'lng': longitude,
       },
-      'mind_state': mindState,
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     };
 
@@ -92,16 +89,27 @@ class AlertDispatcherService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final res = await http.post(
-        Uri.parse(_webhookUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 10));
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 10);
+      final uri = Uri.parse(_webhookUrl);
+      final request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(payload));
+      final response = await request.close().timeout(
+        const Duration(seconds: 10),
+      );
+      final statusCode = response.statusCode;
+      await response.drain<void>();
+      client.close();
 
       _dispatching = false;
       notifyListeners();
 
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      if (statusCode >= 200 && statusCode < 300) {
+        _bus.emit(SentraEventType.alertDispatch, {
+          'status': 'sent',
+          'payload': payload,
+        });
         return true;
       }
       if (enqueueOnFailure) _queue.add(payload);

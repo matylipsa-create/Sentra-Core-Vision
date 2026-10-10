@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../config/accessibility_theme.dart';
 import '../services/event_bus.dart';
 import '../models/navigation_payloads.dart';
 import '../widgets/accessible_button.dart';
-import 'package:provider/provider.dart';
 
 /// OCR / text reading screen.
 ///
 /// In production this will invoke the camera + OCR pipeline. Currently
-/// it publishes a [NavigationEvent] with mode `text_ocr` on the bus and
+/// it emits a `navigation` event with mode `text_ocr` on the bus and
 /// shows a TTS-ready status card.
 class OcrScreen extends StatefulWidget {
   const OcrScreen({super.key});
@@ -89,15 +89,15 @@ class _OcrScreenState extends State<OcrScreen> {
       } else {
         _scanning = true;
         _lastText = 'Escaneando...';
-        bus.publish(NavigationEvent(
+        bus.emit(
+          SentraEventType.navigation,
           const NavigationEventPayload(
             mode: NavigationMode.textOcr,
             targetId: 0,
             accessibilityModeActive: true,
             parameters: {'source': 'camera'},
-          ),
-          DateTime.now().millisecondsSinceEpoch,
-        ));
+          ).toJson(),
+        );
       }
     });
   }

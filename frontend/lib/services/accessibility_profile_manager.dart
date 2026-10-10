@@ -35,11 +35,10 @@ class AccessibilityProfileManager extends ChangeNotifier {
     if (profile == null || profile == _active) return;
     _active = profile;
     notifyListeners();
-    _bus.publish(ProfileChangedEvent(
-      profile.profileId,
-      profile.type,
-      DateTime.now().millisecondsSinceEpoch,
-    ));
+    _bus.emit(
+      SentraEventType.profileChanged,
+      profile.toJson(),
+    );
   }
 
   /// Updates fields on the active profile immutably.
@@ -61,8 +60,6 @@ class AccessibilityProfileManager extends ChangeNotifier {
       _profiles['low_vision'] ?? _lowVisionDefault;
   AccessibilityProfilePayload get deafBlind =>
       _profiles['deaf_blind'] ?? _deafBlindDefault;
-
-  // ---- Built-in defaults -------------------------------------------------
 
   static const AccessibilityProfilePayload _blindDefault =
       AccessibilityProfilePayload(

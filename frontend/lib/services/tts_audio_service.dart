@@ -15,9 +15,8 @@ import 'event_bus.dart';
 /// is already in progress.
 ///
 /// Reactively listens to the [SentraEventBus] for:
-/// - [TtsEvent] — speaks the payload text at the requested rate/priority.
-/// - [MindStateChangedEvent] — announces breach distortion automatically.
-/// - [CameraFrameEvent] — speaks proximity warnings when obstacles are close.
+/// - `tts` events — speaks the payload text at the requested rate/priority.
+/// - `camera_frame` events — speaks proximity warnings when obstacles are close.
 class TtsAudioService extends ChangeNotifier {
   final SentraEventBus _bus;
   final FlutterTts _tts = FlutterTts();
@@ -37,7 +36,6 @@ class TtsAudioService extends ChangeNotifier {
   bool get isSpeaking => _speaking;
   bool get isInitialized => _initialized;
 
-  /// Initializes the TTS engine and starts listening to bus events.
   Future<void> start() async {
     if (_initialized) return;
     _initialized = true;
@@ -62,12 +60,11 @@ class TtsAudioService extends ChangeNotifier {
       notifyListeners();
     });
 
-    _subs.add(_bus.on<TtsEvent>().listen(_handleTtsEvent));
-    _subs.add(_bus.on<MindStateChangedEvent>().listen(_handleMindStateEvent));
-    _subs.add(_bus.on<CameraFrameEvent>().listen(_handleCameraFrameEvent));
+    _subs.add(_bus.on(SentraEventType.tts).listen(_handleTtsEvent));
+    _subs.add(
+        _bus.on(SentraEventType.cameraFrame).listen(_handleCameraFrameEvent));
   }
 
-  /// Stops any current speech and cancels the queue.
   Future<void> stop() async {
     await _tts.stop();
     _speaking = false;
@@ -75,11 +72,6 @@ class TtsAudioService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Speaks [text] at the given [priority] and optional [rate] override.
-  ///
-  /// Critical-priority messages interrupt any ongoing speech. Normal-priority
-  /// messages are skipped if a critical message is in progress. Low-priority
-  /// messages are skipped if any other message is in progress.
   Future<void> speak(
     String text, {
     TtsPriority priority = TtsPriority.normal,
@@ -109,28 +101,17 @@ class TtsAudioService extends ChangeNotifier {
     return false;
   }
 
-  void _handleTtsEvent(TtsEvent event) {
-    final payload = event.payload;
+  void _handleTtsEvent(SentraEvent event) {
+    final payload = TtsPayload.fromJson(
+      Map<String, dynamic>.from(event.payload),
+    );
     speak(payload.text, priority: payload.priority, rate: payload.rate);
   }
 
-  void _handleMindStateEvent(MindStateChangedEvent event) {
-    if (event.stateMode == 'IMAGINARY_NUMBER') {
-      speak(
-        'Alerta: percepción distorsionada. Modo números imaginarios activado. '
-        'Compensación háptica y de voz aumentada.',
-        priority: TtsPriority.critical,
-      );
-    } else if (event.stability > 40.0) {
-      speak(
-        'Percepción estabilizada. Modo números reales restaurado.',
-        priority: TtsPriority.normal,
-      );
-    }
-  }
-
-  void _handleCameraFrameEvent(CameraFrameEvent event) {
-    final payload = event.payload;
+  void _handleCameraFrameEvent(SentraEvent event) {
+    final payload = CameraFramePayload.fromJson(
+      Map<String, dynamic>.from(event.payload),
+    );
     if (!payload.obstacleProximity) return;
     if (payload.estimatedDistanceMeters < 0) return;
 

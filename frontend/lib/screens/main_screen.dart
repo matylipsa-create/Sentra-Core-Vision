@@ -2,21 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../config/accessibility_theme.dart';
-import '../models/navigation_payloads.dart';
 import '../services/accessibility_profile_manager.dart';
 import '../services/haptic_feedback_service.dart';
 import '../widgets/accessible_button.dart';
 import 'obstacle_screen.dart';
 import 'ocr_screen.dart';
 import 'profile_selector_screen.dart';
-import 'mission_node_screen.dart';
-import 'tactical_ops_screen.dart';
 import 'voice_settings_screen.dart';
 
 /// Main navigation hub with four giant accessible buttons.
 ///
 /// Each button opens a dedicated sub-screen and is fully annotated with
-/// Semantics for TalkBack / VoiceOver / NVDA.
+/// Semantics for TalkBack / VoiceOver / NVDA. The layout uses a Column with
+/// Expanded children so buttons fill available space equally on any screen
+/// size — no scrolling required.
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -42,7 +41,7 @@ class _MainScreenState extends State<MainScreen> {
       body: SafeArea(
         child: Semantics(
           container: true,
-          label: 'Menú principal de Sentra Visión',
+          label: 'Menú principal de Sentra Visión. Cuatro opciones: Detección de Obstáculos, Lectura OCR, Selector de Perfil, y Configuración de Voz y Háptica.',
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AccessibilityTheme.space3,
@@ -72,60 +71,48 @@ class _MainScreenState extends State<MainScreen> {
                 ),
                 SizedBox(height: AccessibilityTheme.space3),
                 Expanded(
-                  child: ListView(
-                    children: [
-                      AccessibleButton(
-                        label: 'Detección de Obstáculos',
-                        hint:
-                            'Activa la cámara y detecta obstáculos cercanos con vibraciones de alerta.',
-                        isPrimary: true,
-                        onTap: () => _navigateTo(context,
-                            const ObstacleScreen()),
-                      ),
-                      SizedBox(height: AccessibilityTheme.space2),
-                      AccessibleButton(
-                        label: 'Lectura OCR / Texto',
-                        hint:
-                            'Apunta la cámara a texto para que sea leído en voz alta.',
-                        onTap: () => _navigateTo(context,
-                            const OcrScreen()),
-                      ),
-                      SizedBox(height: AccessibilityTheme.space2),
-                      AccessibleButton(
-                        label: 'Selector de Perfil',
-                        hint:
-                            'Cambia entre Ceguera Total, Baja Visión y Sordociego.',
-                        onTap: () => _navigateTo(context,
-                            const ProfileSelectorScreen()),
-                      ),
-                      SizedBox(height: AccessibilityTheme.space2),
-                      AccessibleButton(
-                        label: 'Configuración de Voz y Háptica',
-                        hint:
-                            'Ajusta la velocidad de voz y la intensidad de vibración.',
-                        onTap: () => _navigateTo(context,
-                            const VoiceSettingsScreen()),
-                      ),
-                      SizedBox(height: AccessibilityTheme.space2),
-                      AccessibleButton(
-                        label: 'Operaciones Tácticas',
-                        hint:
-                            'Visualiza tu estado mental, misiones activas y craftea objetos.',
-                        onTap: () => _navigateTo(context,
-                            const TacticalOpsScreen()),
-                      ),
-                      SizedBox(height: AccessibilityTheme.space2),
-                      AccessibleButton(
-                        label: 'Nodos de Misión',
-                        hint:
-                            'Explora nodos geográficos, activa misiones, calcula rutas y dispara alertas.',
-                        isPrimary: true,
-                        onTap: () => _navigateTo(context,
-                            const MissionNodeScreen()),
-                      ),
-                    ],
+                  child: _GiantButton(
+                    label: 'Detección de Obstáculos',
+                    hint:
+                        'Activa la cámara y detecta obstáculos cercanos con vibraciones de alerta.',
+                    isPrimary: true,
+                    icon: Icons.radar,
+                    onTap: () => _navigateTo(context, const ObstacleScreen()),
                   ),
                 ),
+                SizedBox(height: AccessibilityTheme.space2),
+                Expanded(
+                  child: _GiantButton(
+                    label: 'Lectura OCR / Texto',
+                    hint:
+                        'Apunta la cámara a texto para que sea leído en voz alta.',
+                    icon: Icons.document_scanner_outlined,
+                    onTap: () => _navigateTo(context, const OcrScreen()),
+                  ),
+                ),
+                SizedBox(height: AccessibilityTheme.space2),
+                Expanded(
+                  child: _GiantButton(
+                    label: 'Selector de Perfil',
+                    hint:
+                        'Cambia entre Ceguera Total, Baja Visión y Sordociego.',
+                    icon: Icons.accessibility_new,
+                    onTap: () =>
+                        _navigateTo(context, const ProfileSelectorScreen()),
+                  ),
+                ),
+                SizedBox(height: AccessibilityTheme.space2),
+                Expanded(
+                  child: _GiantButton(
+                    label: 'Configuración de Voz y Háptica',
+                    hint:
+                        'Ajusta la velocidad de voz y la intensidad de vibración.',
+                    icon: Icons.settings,
+                    onTap: () =>
+                        _navigateTo(context, const VoiceSettingsScreen()),
+                  ),
+                ),
+                SizedBox(height: AccessibilityTheme.space2),
               ],
             ),
           ),
@@ -149,5 +136,81 @@ class _MainScreenState extends State<MainScreen> {
       case AccessibilityProfileType.deafBlind:
         return 'Sordociego';
     }
+  }
+}
+
+/// A giant accessible button that fills its Expanded parent, with full
+/// Semantics annotation and high-contrast styling.
+class _GiantButton extends StatelessWidget {
+  final String label;
+  final String hint;
+  final bool isPrimary;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _GiantButton({
+    required this.label,
+    required this.hint,
+    required this.icon,
+    this.isPrimary = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      hint: hint,
+      enabled: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AccessibilityTheme.borderRadius),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: isPrimary
+                ? AccessibilityTheme.primary
+                : AccessibilityTheme.surface,
+            borderRadius: BorderRadius.circular(AccessibilityTheme.borderRadius),
+            border: Border.all(
+              color: AccessibilityTheme.primary,
+              width: isPrimary ? 3 : 2,
+            ),
+          ),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AccessibilityTheme.space3,
+            vertical: AccessibilityTheme.space2,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 48,
+                color: isPrimary
+                    ? AccessibilityTheme.onPrimary
+                    : AccessibilityTheme.primary,
+              ),
+              SizedBox(height: AccessibilityTheme.space1),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: isPrimary
+                      ? AccessibilityTheme.onPrimary
+                      : AccessibilityTheme.textHigh,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

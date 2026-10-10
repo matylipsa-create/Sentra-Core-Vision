@@ -1,99 +1,106 @@
 import 'dart:async';
+import 'dart:convert';
 
-import '../models/navigation_payloads.dart';
+/// Event type constants for the JSON event bus.
+class SentraEventType {
+  SentraEventType._();
 
-/// Marker interface for every event that flows through the bus.
-abstract class SentraEvent {
-  int get timestamp;
+  static const String navigation = 'navigation';
+  static const String cameraFrame = 'camera_frame';
+  static const String haptic = 'haptic';
+  static const String tts = 'tts';
+  static const String profileChanged = 'profile_changed';
+  static const String error = 'error';
+  static const String alertDispatch = 'alert_dispatch';
 }
 
-class NavigationEvent extends SentraEvent {
-  final NavigationEventPayload payload;
-  @override
-  final int timestamp;
-  NavigationEvent(this.payload, this.timestamp);
-}
-
-class CameraFrameEvent extends SentraEvent {
-  final CameraFramePayload payload;
-  @override
-  final int timestamp;
-  CameraFrameEvent(this.payload, this.timestamp);
-}
-
-class HapticEvent extends SentraEvent {
-  final HapticPayload payload;
-  @override
-  final int timestamp;
-  HapticEvent(this.payload, this.timestamp);
-}
-
-class TtsEvent extends SentraEvent {
-  final TtsPayload payload;
-  @override
-  final int timestamp;
-  TtsEvent(this.payload, this.timestamp);
-}
-
-class ProfileChangedEvent extends SentraEvent {
-  final String profileId;
-  final AccessibilityProfileType type;
-  @override
-  final int timestamp;
-  ProfileChangedEvent(this.profileId, this.type, this.timestamp);
-}
-
-class MindStateChangedEvent extends SentraEvent {
-  final double stability;
-  final String stateMode;
-  final double breachExposure;
-  @override
-  final int timestamp;
-  MindStateChangedEvent(
-      this.stability, this.stateMode, this.breachExposure, this.timestamp);
-}
-
-class MissionUpdatedEvent extends SentraEvent {
-  final String missionId;
-  final String status;
-  @override
-  final int timestamp;
-  MissionUpdatedEvent(this.missionId, this.status, this.timestamp);
-}
-
-class ItemCraftedEvent extends SentraEvent {
-  final String itemKey;
-  final String displayName;
-  final int lootCost;
-  @override
-  final int timestamp;
-  ItemCraftedEvent(
-      this.itemKey, this.displayName, this.lootCost, this.timestamp);
-}
-
-/// Global decoupled event bus. Sensors (camera, voice, TTS) publish events;
-/// UI and services subscribe to the payload types they care about.
+/// Ultralight immutable JSON event envelope.
 ///
-/// This is the Dart equivalent of the C# event + JSON payload pattern used
-/// in the Godot motor: producers and consumers never hold references to each
-/// other, they only share the bus and the payload contract.
+/// Every event on the bus is a `Map<String, dynamic>` with:
+/// - `type` — string discriminator (see [SentraEventType])
+/// - `timestamp` — milliseconds since epoch
+/// - `payload` — immutable `Map<String, dynamic>` with type-specific fields
+///
+/// Producers and consumers never hold references to each other; they only
+/// share the bus and the JSON contract.
+class SentraEvent {
+  final String type;
+  final int timestamp;
+  final Map<String, dynamic> payload;
+
+  const SentraEvent({
+    required this.type,
+    required this.timestamp,
+    required this.payload,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'timestamp': timestamp,
+        'payload': Map<String, dynamic>.from(payload),
+      };
+
+  @override
+  String toString() => jsonEncode(toJson());
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SentraEvent &&
+          other.type == type &&
+          other.timestamp == timestamp &&
+          _mapEquals(other.payload, payload));
+
+  @override
+  int get hashCode => Object.hash(type, timestamp, payload);
+
+  static bool _mapEquals(Map<String, dynamic> a, Map<String, dynamic> b) {
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (!b.containsKey(key) || a[key] != b[key]) return false;
+    }
+    return true;
+  }
+}
+
+/// Helper to build a [SentraEvent] with the current clock.
+SentraEvent sentraEvent(
+  String type,
+  Map<String, dynamic> payload, [
+  int? timestamp,
+]) =>
+    SentraEvent(
+      type: type,
+      timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+      payload: Map<String, dynamic>.from(payload),
+    );
+
+/// Global decoupled event bus using ultralight JSON payloads.
+///
+/// Sensors (camera, voice, TTS) publish [SentraEvent]s; UI and services
+/// subscribe to the event types they care about via [on].
 class SentraEventBus {
   final StreamController<SentraEvent> _controller =
       StreamController<SentraEvent>.broadcast();
 
   Stream<SentraEvent> get stream => _controller.stream;
 
-  /// Typed stream filtered to events whose runtime type is [T].
-  Stream<T> on<T extends SentraEvent>() =>
-      _controller.stream.where((e) => e is T).cast<T>();
+  /// Stream filtered to events of the given [type].
+  Stream<SentraEvent> on(String type) =>
+      _controller.stream.where((e) => e.type == type);
 
+  /// Publish a JSON event on the bus.
   void publish(SentraEvent event) {
     if (!_controller.isClosed) _controller.add(event);
   }
 
-  void publishWithClock(SentraEvent Function(int timestamp) factory) {
-    publish(factory(DateTime.now().millisecondsSinceEpoch));
-  }
+  /// Convenience: build and publish in one call.
+  void emit(
+    String type,
+    Map<String, dynamic> payload, [
+    int? timestamp,
+  ]) =>
+      publish(sentraEvent(type, payload, timestamp));
 
   Future<void> dispose() async => _controller.close();
 
@@ -115,9 +122,9 @@ class EventBusProvider {
 
 /// Holds subscriptions so listeners can be cancelled in bulk.
 class EventSubscriptions {
-  final List<StreamSubscription> _subs = [];
+  final List<StreamSubscription<SentraEvent>> _subs = [];
 
-  void add(StreamSubscription sub) => _subs.add(sub);
+  void add(StreamSubscription<SentraEvent> sub) => _subs.add(sub);
 
   Future<void> cancelAll() async {
     await Future.wait(_subs.map((s) => s.cancel()));

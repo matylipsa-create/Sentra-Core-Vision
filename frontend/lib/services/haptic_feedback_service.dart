@@ -9,11 +9,11 @@ import 'event_bus.dart';
 /// vibrations for the deaf-blind profile and proximity-scaled pulses
 /// from the camera duty cycle controller.
 ///
-/// Listens to [HapticEvent]s on the bus and translates each [HapticPayload]
+/// Listens to `haptic` events on the bus and translates each [HapticPayload]
 /// into a timed sequence of vibration bursts via [HapticFeedback].
 class HapticFeedbackService {
   final SentraEventBus _bus;
-  StreamSubscription<HapticEvent>? _subscription;
+  StreamSubscription<SentraEvent>? _subscription;
   bool _active = false;
 
   HapticFeedbackService({SentraEventBus? bus})
@@ -21,25 +21,25 @@ class HapticFeedbackService {
 
   bool get isActive => _active;
 
-  /// Start listening for haptic events on the bus.
   void start() {
     if (_active) return;
     _active = true;
-    _subscription = _bus.on<HapticEvent>().listen(_handleEvent);
+    _subscription = _bus.on(SentraEventType.haptic).listen(_handleEvent);
   }
 
-  /// Stop listening and cancel any pending vibrations.
   void stop() {
     _active = false;
     _subscription?.cancel();
     _subscription = null;
   }
 
-  void _handleEvent(HapticEvent event) {
-    _playPattern(event.payload);
+  void _handleEvent(SentraEvent event) {
+    final payload = HapticPayload.fromJson(
+      Map<String, dynamic>.from(event.payload),
+    );
+    _playPattern(payload);
   }
 
-  /// Plays a rhythmic haptic pattern directly (useful for manual triggers).
   Future<void> playPattern(HapticPayload payload) async {
     await _playPattern(payload);
   }
@@ -86,8 +86,6 @@ class HapticFeedbackService {
   void dispose() {
     stop();
   }
-
-  // ---- Morse code table --------------------------------------------------
 
   static const Map<String, String> _morseTable = {
     'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.',
