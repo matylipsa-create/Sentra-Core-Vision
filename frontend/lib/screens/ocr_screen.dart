@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide NavigationMode;
 import 'package:provider/provider.dart';
 
 import '../config/accessibility_theme.dart';
-import '../models/navigation_payloads.dart';
+import '../models/navigation_payloads.dart' show NavigationMode;
 import '../services/event_bus.dart';
 import '../widgets/accessible_button.dart';
 
