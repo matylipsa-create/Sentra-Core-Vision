@@ -1,5 +1,61 @@
-server/vision/requirements.txt
-opencv-python
-numpy
-pyttsx3
-websockets
+# Vision service
+
+A lightweight Python module for camera-driven event generation and optional speech feedback.
+
+## Purpose
+
+This service is designed to support practical computer-vision workflows in a simple, maintainable way.
+
+It can be used to:
+- read frames from a webcam or network stream
+- detect basic motion or light changes
+- emit structured JSON events
+- send alerts to a frontend or local integration layer
+- announce key events with a TTS engine
+
+## Install
+
+```bash
+cd server
+python -m venv .venv
+source .venv/bin/activate
+pip install -r vision/requirements.txt
+```
+
+## Run the node locally
+
+```bash
+python server/main_vision_node.py --source 0 --fps 8
+```
+
+For a local RTSP stream:
+
+```bash
+python server/main_vision_node.py --source "rtsp://user:pass@192.168.1.50:554/stream" --fps 5
+```
+
+Optional WebSocket broadcast:
+
+```bash
+python server/main_vision_node.py --source 0 --fps 8 --ws-port 8765
+```
+
+## Example event payload
+
+```json
+{
+  "type": "event",
+  "module": "vision",
+  "action": "perception.update",
+  "source": "0",
+  "timestamp": "2026-10-14T00:00:00+00:00",
+  "alert_level": "warning",
+  "metrics": {
+    "mean_brightness": 32.5,
+    "edge_density": 0.018,
+    "normalized_largest_area": 0.041
+  }
+}
+```
+
+This service is intentionally simple, portable and suitable for low-power devices such as Raspberry Pi.

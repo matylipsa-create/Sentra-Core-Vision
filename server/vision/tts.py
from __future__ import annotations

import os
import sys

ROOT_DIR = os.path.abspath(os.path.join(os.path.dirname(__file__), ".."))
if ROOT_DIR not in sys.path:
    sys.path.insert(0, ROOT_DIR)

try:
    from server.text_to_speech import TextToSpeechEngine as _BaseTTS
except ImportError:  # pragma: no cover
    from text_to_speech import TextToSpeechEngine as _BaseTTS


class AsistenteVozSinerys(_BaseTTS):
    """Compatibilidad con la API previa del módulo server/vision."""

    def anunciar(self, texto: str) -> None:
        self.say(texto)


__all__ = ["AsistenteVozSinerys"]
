@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+import os
+import sys
+from datetime import datetime, timezone
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+try:
+    from server.vision_core import SinerysVisionEngine as _BaseVisionEngine
+except ImportError:  # pragma: no cover
+    from vision_core import SinerysVisionEngine as _BaseVisionEngine
+
+
+class SinerysVisionEngine(_BaseVisionEngine):
+    """Compatibilidad con la API previa del módulo server/vision."""
+
+    def __init__(self, camera_index: int | str = 0, width: int = 640, height: int = 480, fps: int = 15, source_name: str | None = None):
+        super().__init__(
+            camera_source=camera_index,
+            width=width,
+            height=height,
+            fps=fps,
+            source_name=source_name or f"camera:{camera_index}",
+        )
+
+    def iniciar_captura(self) -> None:
+        self.start()
+
+    def procesar_frame(self):
+        if self._cap is None or not self._cap.isOpened():
+            self.start()
+
+        ok, frame = self._read_frame()
+        if not ok or frame is None:
+            return None
+
+        result = self.process_frame(frame)
+        timestamp = datetime.now(timezone.utc).astimezone().isoformat()
+        metrics = result["metrics"]
+
+        estado_escena = "oscura" if metrics.get("mean_brightness", 0) < 50 else "normal"
+        event = {
+            "type": "event",
+            "module": "vision",
+            "action": "perception.update",
+            "payload": {
+                "event_type": "scene_snapshot",
+                "source": self.source_name,
+                "confidence": 0.7,
+                "alert_level": result["alert_level"],
+                "metadata": {
+                    "luminosidad": metrics.get("mean_brightness"),
+                    "estado_escena": estado_escena,
+                    "resolution": [metrics.get("frame_width"), metrics.get("frame_height")],
+                    "edge_density": metrics.get("edge_density"),
+                },
+                "timestamp": timestamp,
+            },
+        }
+        if result["alert_level"] in {"warning", "danger"}:
+            event["payload"]["alerta"] = "Se detectó una condición de riesgo o baja luminosidad."
+        return event
+
+    def detener(self) -> None:
+        self.stop()
