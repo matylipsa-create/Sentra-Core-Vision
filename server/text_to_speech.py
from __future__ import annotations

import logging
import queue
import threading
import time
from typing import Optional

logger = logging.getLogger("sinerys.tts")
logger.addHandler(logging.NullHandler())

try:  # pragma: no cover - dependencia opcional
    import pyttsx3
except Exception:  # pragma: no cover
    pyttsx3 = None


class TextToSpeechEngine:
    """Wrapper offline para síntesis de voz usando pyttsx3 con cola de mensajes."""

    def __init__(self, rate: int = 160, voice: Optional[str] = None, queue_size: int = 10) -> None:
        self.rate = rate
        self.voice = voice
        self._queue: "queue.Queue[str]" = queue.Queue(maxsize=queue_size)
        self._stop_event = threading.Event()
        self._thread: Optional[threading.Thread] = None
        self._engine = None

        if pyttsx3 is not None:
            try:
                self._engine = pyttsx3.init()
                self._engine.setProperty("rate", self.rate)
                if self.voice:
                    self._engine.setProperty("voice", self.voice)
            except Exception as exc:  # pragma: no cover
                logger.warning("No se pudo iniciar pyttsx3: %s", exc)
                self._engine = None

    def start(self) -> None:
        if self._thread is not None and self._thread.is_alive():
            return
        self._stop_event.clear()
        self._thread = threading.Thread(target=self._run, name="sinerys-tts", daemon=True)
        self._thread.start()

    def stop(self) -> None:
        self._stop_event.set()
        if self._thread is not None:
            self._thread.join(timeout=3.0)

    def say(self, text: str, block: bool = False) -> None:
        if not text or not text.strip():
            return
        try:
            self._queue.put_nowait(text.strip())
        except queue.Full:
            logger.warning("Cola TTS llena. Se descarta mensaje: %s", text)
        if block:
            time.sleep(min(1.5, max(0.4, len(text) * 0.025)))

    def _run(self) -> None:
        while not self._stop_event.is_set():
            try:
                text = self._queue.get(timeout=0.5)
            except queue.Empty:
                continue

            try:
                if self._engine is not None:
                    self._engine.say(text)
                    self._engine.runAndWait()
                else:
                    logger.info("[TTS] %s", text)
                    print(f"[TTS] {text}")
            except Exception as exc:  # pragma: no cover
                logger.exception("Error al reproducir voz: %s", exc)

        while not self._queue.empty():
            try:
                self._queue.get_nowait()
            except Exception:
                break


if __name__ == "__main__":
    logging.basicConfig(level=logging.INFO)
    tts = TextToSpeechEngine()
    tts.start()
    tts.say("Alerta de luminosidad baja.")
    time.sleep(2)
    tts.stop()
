@@ -1,0 +1,178 @@
+from __future__ import annotations
+
+import json
+import logging
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterator, Optional, Tuple
+
+import cv2
+import numpy as np
+
+logger = logging.getLogger("sinerys.vision")
+logger.addHandler(logging.NullHandler())
+
+
+class SinerysVisionEngine:
+    """Motor de visión ligero y agnóstico para streams locales/offline.
+
+    Soporta:
+    - webcam local (index 0 o device id)
+    - streams RTSP/MJPEG locales
+    - pipeline ligero por fotograma con métricas ambientales
+    - eventos JSON listos para consola, WebSockets o backends.
+    """
+
+    def __init__(
+        self,
+        camera_source: int | str = 0,
+        width: int = 640,
+        height: int = 480,
+        fps: int = 15,
+        source_name: Optional[str] = None,
+    ) -> None:
+        self.camera_source = camera_source
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.source_name = source_name or str(camera_source)
+        self._cap: Optional[cv2.VideoCapture] = None
+        self._running = False
+
+    def start(self) -> None:
+        if self._cap is not None and self._cap.isOpened():
+            self._running = True
+            return
+
+        logger.info("Inicializando fuente de video: %s", self.camera_source)
+        self._cap = cv2.VideoCapture(self.camera_source)
+        if not self._cap or not self._cap.isOpened():
+            raise RuntimeError(f"No se pudo abrir la fuente de video: {self.camera_source}")
+
+        try:
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            self._cap.set(cv2.CAP_PROP_FPS, self.fps)
+        except Exception:
+            logger.debug("No se pudieron configurar width/height/fps; se continúa con defaults.")
+
+        self._running = True
+        logger.info("Fuente de video lista: %s", self.source_name)
+
+    def stop(self) -> None:
+        self._running = False
+        if self._cap is not None:
+            try:
+                self._cap.release()
+            except Exception as exc:  # pragma: no cover - defensivo
+                logger.warning("Error al liberar cámara: %s", exc)
+        self._cap = None
+        logger.info("Captura detenida.")
+
+    def _read_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
+        if self._cap is None or not self._cap.isOpened():
+            return False, None
+
+        ret, frame = self._cap.read()
+        if not ret or frame is None:
+            return False, None
+        return True, frame
+
+    def process_frame(self, frame: np.ndarray) -> Dict[str, Any]:
+        """Procesa un frame y devuelve métricas + nivel de alerta."""
+        if frame is None:
+            raise ValueError("frame no puede ser None")
+
+        height, width = frame.shape[:2]
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        mean_brightness = float(np.mean(gray))
+
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 50, 150)
+        edge_density = float(np.count_nonzero(edges)) / max(1, width * height)
+
+        kernel = np.ones((5, 5), np.uint8)
+        dilated = cv2.dilate(edges, kernel, iterations=1)
+        contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        largest_contour = 0.0
+        for contour in contours:
+            area = float(cv2.contourArea(contour))
+            if area > largest_contour:
+                largest_contour = area
+
+        normalized_area = largest_contour / max(1, width * height)
+
+        if mean_brightness < 25 or normalized_area > 0.10:
+            alert_level = "danger"
+        elif mean_brightness < 45 or edge_density > 0.02 or normalized_area > 0.03:
+            alert_level = "warning"
+        else:
+            alert_level = "info"
+
+        metrics: Dict[str, Any] = {
+            "frame_width": width,
+            "frame_height": height,
+            "mean_brightness": round(mean_brightness, 3),
+            "edge_density": round(edge_density, 6),
+            "largest_contour_area": round(largest_contour, 3),
+            "normalized_largest_area": round(normalized_area, 6),
+            "contour_count": len(contours),
+        }
+        return {"alert_level": alert_level, "metrics": metrics}
+
+    def _build_event(self, metrics: Dict[str, Any], alert_level: str) -> Dict[str, Any]:
+        timestamp = datetime.now(timezone.utc).astimezone().isoformat()
+        return {
+            "type": "event",
+            "module": "vision",
+            "action": "perception.update",
+            "source": self.source_name,
+            "timestamp": timestamp,
+            "alert_level": alert_level,
+            "metrics": metrics,
+        }
+
+    def iter_events(self) -> Iterator[Dict[str, Any]]:
+        """Genera eventos JSON por cada frame procesado."""
+        if self._cap is None:
+            self.start()
+
+        try:
+            while self._running:
+                start = time.time()
+                ok, frame = self._read_frame()
+                if not ok or frame is None:
+                    time.sleep(0.2)
+                    continue
+
+                try:
+                    result = self.process_frame(frame)
+                    event = self._build_event(result["metrics"], result["alert_level"])
+                    yield event
+                except Exception as exc:  # pragma: no cover - defensivo
+                    logger.exception("Error al procesar un frame: %s", exc)
+
+                elapsed = time.time() - start
+                target = 1.0 / max(1, self.fps)
+                if elapsed < target:
+                    time.sleep(target - elapsed)
+        finally:
+            self.stop()
+
+    def emit_json(self) -> str:
+        """Conveniencia para consola: serializa el último evento procesado."""
+        # Se usa por compatibilidad; no mantiene estado del frame actual.
+        return json.dumps({"event": "placeholder"}, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    engine = SinerysVisionEngine(camera_source=0, fps=8)
+    try:
+        engine.start()
+        for event in engine.iter_events():
+            print(json.dumps(event, ensure_ascii=False))
+            break
+    finally:
+        engine.stop()

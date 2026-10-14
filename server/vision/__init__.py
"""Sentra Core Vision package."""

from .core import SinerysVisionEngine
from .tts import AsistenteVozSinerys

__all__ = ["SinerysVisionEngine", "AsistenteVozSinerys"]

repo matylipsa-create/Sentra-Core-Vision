@@ -1,0 +1,5 @@
+server/vision/requirements.txt
+opencv-python
+numpy
+pyttsx3
+websockets

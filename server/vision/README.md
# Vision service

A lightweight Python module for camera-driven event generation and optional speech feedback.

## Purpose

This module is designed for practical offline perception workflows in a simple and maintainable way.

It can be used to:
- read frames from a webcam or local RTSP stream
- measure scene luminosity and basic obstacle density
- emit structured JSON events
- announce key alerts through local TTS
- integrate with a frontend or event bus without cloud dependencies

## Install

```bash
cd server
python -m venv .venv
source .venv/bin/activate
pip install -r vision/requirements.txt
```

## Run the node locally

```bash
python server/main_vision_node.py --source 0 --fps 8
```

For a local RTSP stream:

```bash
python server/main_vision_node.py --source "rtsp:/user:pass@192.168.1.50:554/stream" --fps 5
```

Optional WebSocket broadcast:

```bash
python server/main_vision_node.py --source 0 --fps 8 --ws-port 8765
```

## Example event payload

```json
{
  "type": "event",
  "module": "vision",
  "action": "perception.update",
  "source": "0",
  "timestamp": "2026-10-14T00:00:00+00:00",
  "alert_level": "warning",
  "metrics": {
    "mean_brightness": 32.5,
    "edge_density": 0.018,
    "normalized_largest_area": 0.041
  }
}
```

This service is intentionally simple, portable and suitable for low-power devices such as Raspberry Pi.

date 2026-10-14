@@ -1,0 +1,14 @@
+server/vision/tts.py
+from __future__ import annotations
+
+from server.text_to_speech import TextToSpeechEngine as _BaseTTS
+
+
+class AsistenteVozSinerys(_BaseTTS):
+    """Compatibilidad con la API previa del módulo server/vision."""
+
+    def anunciar(self, texto: str) -> None:
+        self.say(texto)
+
+
+__all__ = ["AsistenteVozSinerys"]

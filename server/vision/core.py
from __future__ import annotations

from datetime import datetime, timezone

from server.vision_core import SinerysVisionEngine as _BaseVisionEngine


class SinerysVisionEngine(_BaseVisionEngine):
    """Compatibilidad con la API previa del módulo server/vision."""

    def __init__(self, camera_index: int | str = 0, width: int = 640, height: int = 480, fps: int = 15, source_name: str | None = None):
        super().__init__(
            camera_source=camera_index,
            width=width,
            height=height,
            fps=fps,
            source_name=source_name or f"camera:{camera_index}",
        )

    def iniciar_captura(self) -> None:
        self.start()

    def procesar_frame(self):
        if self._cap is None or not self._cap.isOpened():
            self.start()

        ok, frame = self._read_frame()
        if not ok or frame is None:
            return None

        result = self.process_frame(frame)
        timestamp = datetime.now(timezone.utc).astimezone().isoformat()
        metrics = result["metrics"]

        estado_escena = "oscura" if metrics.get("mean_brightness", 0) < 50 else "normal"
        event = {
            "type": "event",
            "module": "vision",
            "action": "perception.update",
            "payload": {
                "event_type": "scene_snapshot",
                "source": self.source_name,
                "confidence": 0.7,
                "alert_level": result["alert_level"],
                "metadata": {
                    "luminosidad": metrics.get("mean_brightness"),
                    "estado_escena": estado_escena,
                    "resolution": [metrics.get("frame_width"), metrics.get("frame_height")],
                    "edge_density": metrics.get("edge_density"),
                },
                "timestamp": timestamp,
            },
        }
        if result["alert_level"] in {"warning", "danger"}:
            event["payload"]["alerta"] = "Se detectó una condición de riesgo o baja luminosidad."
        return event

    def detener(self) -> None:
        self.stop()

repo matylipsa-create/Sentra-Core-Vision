@@ -1,0 +1,137 @@
+server/main_vision_node.py
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import signal
+from typing import Optional, Set
+
+from server.text_to_speech import TextToSpeechEngine
+from server.vision_core import SinerysVisionEngine
+
+try:  # pragma: no cover - opcional para entorno sin WebSockets
+    import websockets
+except Exception:  # pragma: no cover
+    websockets = None
+
+logger = logging.getLogger("sinerys.node")
+logger.addHandler(logging.NullHandler())
+
+
+class VisionNode:
+    """Orquestador: captura + análisis + TTS + WebSocket opcional."""
+
+    def __init__(self, camera_source: int | str = 0, fps: int = 8, websocket_port: Optional[int] = None) -> None:
+        self.engine = SinerysVisionEngine(camera_source=camera_source, fps=fps, source_name=str(camera_source))
+        self.tts = TextToSpeechEngine()
+        self.websocket_port = websocket_port
+        self._ws_clients: Set[object] = set()
+        self._server = None
+        self._running = True
+
+    async def _start_websocket_server(self) -> None:
+        if websockets is None or self.websocket_port is None:
+            return
+        try:
+            self._server = await websockets.serve(self._ws_handler, "0.0.0.0", self.websocket_port)
+            logger.info("WebSocket escuchando en puerto %s", self.websocket_port)
+        except Exception as exc:
+            logger.warning("No se pudo iniciar WebSocket: %s", exc)
+
+    async def _ws_handler(self, websocket, path: str) -> None:  # pragma: no cover - integración opcional
+        self._ws_clients.add(websocket)
+        try:
+            await websocket.wait_closed()
+        finally:
+            self._ws_clients.discard(websocket)
+
+    async def _broadcast(self, payload: str) -> None:
+        if not self._ws_clients:
+            return
+        dead_clients = []
+        for ws in list(self._ws_clients):
+            try:
+                await ws.send(payload)
+            except Exception:
+                dead_clients.append(ws)
+        for ws in dead_clients:
+            self._ws_clients.discard(ws)
+
+    def _tts_for_alert(self, event: dict) -> None:
+        alert_level = event.get("alert_level", "info")
+        if alert_level not in {"warning", "danger"}:
+            return
+
+        metrics = event.get("metrics", {})
+        brightness = metrics.get("mean_brightness", 0)
+        obstacle = metrics.get("normalized_largest_area", 0)
+
+        if alert_level == "danger":
+            phrase = "Alerta crítica. Posible obstáculo o escena muy oscura."
+        else:
+            phrase = "Advertencia. Revisar entorno y luminosidad."
+
+        if brightness:
+            phrase += f" Luminosidad media {brightness:.1f}."
+        if obstacle:
+            phrase += f" Área de obstáculo {obstacle:.3f}."
+
+        self.tts.say(phrase)
+
+    async def run(self) -> None:
+        self.tts.start()
+        self.engine.start()
+        await self._start_websocket_server()
+
+        try:
+            for event in self.engine.iter_events():
+                if not self._running:
+                    break
+
+                payload = json.dumps(event, ensure_ascii=False)
+                print(payload, flush=True)
+                self._tts_for_alert(event)
+                if self.websocket_port is not None:
+                    await self._broadcast(payload)
+                await asyncio.sleep(0)
+        finally:
+            self._running = False
+            self.tts.stop()
+            self.engine.stop()
+            if self._server is not None:
+                self._server.close()
+                await self._server.wait_closed()
+
+
+def _stop_loop() -> None:
+    # Se usa desde señal del sistema para cerrar el nodo limpio.
+    raise KeyboardInterrupt
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Nodo central de visión asistida")
+    parser.add_argument("--source", default=0, help="Fuente de cámara: índice (0) o RTSP URL")
+    parser.add_argument("--fps", type=int, default=8, help="Objetivo de FPS por frame")
+    parser.add_argument("--ws-port", type=int, default=None, help="Puerto opcional para WebSocket")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    node = VisionNode(camera_source=args.source, fps=args.fps, websocket_port=args.ws_port)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: _stop_loop())
+
+    try:
+        asyncio.run(node.run())
+    except KeyboardInterrupt:
+        logger.info("Cierre solicitado por usuario.")
+        node._running = False
+    except Exception as exc:
+        logger.exception("Error fatal en el nodo de visión: %s", exc)
+
+
+if __name__ == "__main__":
+    main()
