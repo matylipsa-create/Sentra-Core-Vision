@@ -1,235 +1,168 @@
-# Sentra Core v4.0.0_BIO — Arquitectura Definitiva
+# Sentra Core Vision — Practical Architecture
 
-> Cuando todo lo demas se apaga, Sentra Core sigue ahi.
+This document describes the actual shape of the repository and the architecture that matches the current stage of the project.
 
-## Vision General
+## 1. Project goal
 
-Sentra Core v4.0.0_BIO adopta una arquitectura de dos capas:
+Sentra Core Vision is an accessible, modular, practical platform for visual perception, monitoring and useful human-centered applications.
 
-```
-┌─────────────────────────────────────────────────┐
-│              Frontend (Flutter / Dart)            │
-│   iOS · Android · Web · Desktop (Win/Mac/Linux)   │
-│   VoiceOrbButton · ModuleDrawer · BioView ·       │
-│   EVOLISView · SettingsView · AccessibleHeader    │
-│   Accesibilidad: TalkBack · VoiceOver · NVDA ·    │
-│   Semantics · ARIA                                │
-└──────────────────┬──────────────────────────────┘
-                   │ WebSocket (tiempo real)
-                   │ REST API (estado / consultas)
-                   │ TCREI (JSON estructurado)
-┌──────────────────┴──────────────────────────────┐
-│           Backend (TypeScript / Node.js)          │
-│   PerceptionEngine · MoralNode · EVOLIS ·         │
-│   BioSoftwareInterface · SyncManager ·            │
-│   ModuleManager · TCREIBridge · GeminiService ·   │
-│   VoiceManager · StorageService · SensorService · │
-│   HardwareAutoAdjust · BacterialGuardian ·        │
-│   TernaryMath                                     │
-└─────────────────────────────────────────────────┘
-```
+The current phase is focused on:
+- clear user-facing applications
+- accessibility and usability
+- modular visual workflows
+- event-driven integrations
+- optional perception services for cameras and sensors
 
-## 1. Backend — Motor TypeScript
+This is not a fully-finished autonomous system or a mythical engine marketed as all-in-one intelligence. It is a foundation for real use cases.
 
-**Lenguaje:** TypeScript  
-**Runtime:** Node.js (Deno / Bun compatibles)  
-**Codigo:** Reutiliza el motor existente en `src/core/`, `src/lib/`, `src/services/`
+## 2. Repository structure
 
-### Modulos del motor
-
-| Modulo | Responsabilidad |
-|--------|----------------|
-| PerceptionEngine | Vision, audio, IMU, STF, GPS — procesamiento de percepcion |
-| MoralNode | Filtro etico (4 reglas inquebrantables) |
-| EVOLIS | Hash chain SHA-256 + firmas ECDSA P-256 |
-| BioSoftwareInterface | Inferencia activa, placebos, reencuadre, coherencia cardiaca |
-| SyncManager | Sincronizacion P2P (Syncthing / Bluetooth Mesh / LoRa) |
-| ModuleManager | Navaja suiza — 9+ modos de operacion |
-| TCREIBridge | Puente percepcion ↔ lenguaje (prompt + response) |
-| GeminiService | IA generativa con fallback local + cache offline |
-| VoiceManager | Sintesis de voz (TTS) + escucha pasiva (STT) |
-| StorageService | IndexedDB + exportacion / importacion |
-| SensorService | GPS, IMU, barometro, luz, brujula |
-| HardwareAutoAdjust | Auto-ajuste segun hardware (incluye Bio) |
-| BacterialGuardian | Defensa USB + cadena EVOLIS + logica ternaria |
-| TernaryMath | Aritmetica ternaria (+1, 0, -1) para confianza |
-
-### Servidor API
-
-El servidor (`server/`) expone:
-
-- **WebSocket** (`ws://localhost:8080/ws`): Comunicacion bidireccional en tiempo real para voz, sensores, sesiones bio, alertas del guardian
-- **REST API** (`http://localhost:8080/api`): Consultas de estado, evidencia, modulos, configuracion
-
-### Endpoints REST
-
-| Metodo | Ruta | Descripcion |
-|--------|------|-------------|
-| GET | `/api/status` | Estado global del sistema |
-| GET | `/api/modules` | Lista de modulos disponibles |
-| GET | `/api/evidence` | Cadena de evidencia EVOLIS |
-| POST | `/api/evidence/verify` | Verificar integridad de la cadena |
-| GET | `/api/bio/protocols` | Protocolos BioSoftware disponibles |
-| GET | `/api/bio/state` | Estado actual de BioSoftware |
-| GET | `/api/bio/stats` | Estadisticas de sesiones bio |
-| GET | `/api/guardian/status` | Estado del Guardian Bacteriano |
-| GET | `/api/usb/devices` | Lista de dispositivos USB y estado de puerto |
-| POST | `/api/usb/block` | Bloquear puerto USB |
-| POST | `/api/usb/unblock` | Desbloquear y vacunar puerto USB |
-| POST | `/api/usb/authenticate` | Autenticar dispositivo USB |
-| GET | `/api/sync/status` | Estado de sincronizacion P2P |
-| POST | `/api/sync/transport` | Cambiar transporte de sincronizacion |
-| POST | `/api/sync/connect-bluetooth` | Conectar Bluetooth |
-| POST | `/api/sync/disconnect-bluetooth` | Desconectar Bluetooth |
-| POST | `/api/command` | Procesar comando (texto) |
-| POST | `/api/settings` | Actualizar configuracion |
-
-### Mensajes WebSocket (TCREI)
-
-Ver `server/tcrei-protocol.ts` para el formato completo.
-
-## 2. Frontend — Flutter (Dart)
-
-**Lenguaje:** Dart  
-**Framework:** Flutter  
-**Plataformas:** iOS, Android, Web, Desktop (Windows, macOS, Linux)
-
-### Estructura
-
-```
-frontend/
-  lib/
-    main.dart                    Punto de entrada
-    app.dart                     SentraApp (MaterialApp + tema)
-    config/
-      theme.dart                 Sistema de colores, tipografia, tema
-      constants.dart             Constantes (URLs del backend, timeouts)
-    models/
-      tcrei_models.dart          Modelos TCREI (mensaje, respuesta, percepcion)
-      module_def.dart            Definicion de modulo
-      bio_session.dart           Sesion BioSoftware
-      evidence_entry.dart        Entrada EVOLIS
-      guardian_status.dart       Estado del guardian
-      app_state.dart             Estado global de la app
-    services/
-      sentra_client.dart         Cliente WebSocket + REST
-      state_notifier.dart        Gestor de estado (ChangeNotifier)
-    widgets/
-      voice_orb_button.dart      Orbe de voz bilateral (escuchar / hablar)
-      accessible_header.dart     Cabecera accesible (modulo, veto, bio, bateria)
-      module_drawer.dart         Cajon tactil de modulos (bottom sheet)
-      response_banner.dart       Banner de respuesta / bloqueo etico
-      status_chips.dart          Chips de estado (veto, bio, EVOLIS)
-      bio_breath_guide.dart      Guia visual de respiracion (coherencia cardiaca)
-      bio_protocol_card.dart     Tarjeta de protocolo bio
-      evidence_chain_view.dart   Vista de cadena EVOLIS
-      guardian_view.dart         Vista del guardian bacteriano
-    screens/
-      vision_screen.dart         Modo vision
-      bio_screen.dart            Modo bio
-      evidence_screen.dart       Modo evidencia
-      learning_screen.dart       Modo aprendizaje
-      game_screen.dart           Modo juego
-      movement_screen.dart       Modo movimiento
-      security_screen.dart       Modo seguridad
-      silence_screen.dart        Modo silencio
-      power_screen.dart          Modo impacto (energia)
-      guardian_screen.dart       Modo guardian
-      settings_screen.dart       Configuracion
-  pubspec.yaml                   Dependencias Flutter
-  README.md                      Guia de compilacion Flutter
+```text
+Sentra-Core-Vision/
+├── README.md
+├── ARCHITECTURE.md
+├── index.html
+├── .github/
+├── .vscode/
+├── frontend/
+│   ├── README.md
+│   ├── pubspec.yaml
+│   ├── lib/
+│   ├── android/
+│   ├── ios/
+│   ├── web/
+│   └── test/
+├── server/
+│   └── vision/
+│       ├── __init__.py
+│       ├── README.md
+│       ├── core.py
+│       ├── tts.py
+│       ├── requirements.txt
+│       └── ...
+└── docs/
 ```
 
-### Accesibilidad
+## 3. Frontend layer
 
-- **Semantics**: Todos los widgets interactivos exponen `Semantics` con `label`, `hint`, `value`
-- **TalkBack** (Android): Soporte nativo via Flutter Semantics
-- **VoiceOver** (iOS): Soporte nativo via Flutter Semantics
-- **NVDA / JAWS** (Windows): Soporte via Flutter Desktop + UI Automation
-- **ARIA** (Web): Flutter Web genera atributos ARIA automaticamente
-- **Contraste**: Todos los colores cumplen WCAG 2.1 AA (ratio >= 4.5:1)
-- **Focus visible**: Outline neon de 3px en todos los elementos focalizables
-- **Tamanos tactiles**: Minimo 56px de altura en botones (64px en touch)
+The frontend is implemented with Flutter and Dart.
 
-### Comunicacion con Backend
+Responsibilities:
+- app shell and navigation
+- accessibility profiles
+- module-based screens
+- monitoring and reporting UI
+- real-time event rendering
+- user interaction with vision and operational tools
 
-- **WebSocket**: Conexión persistente para eventos en tiempo real (voz, sensores, bio, guardian)
-- **REST**: Consultas puntuales (estado, evidencia, modulos)
-- **Reconexion automatica**: Exponential backoff con maximo 5 intentos
-- **Offline**: El frontend mantiene estado local y sincroniza al reconectar
+Main areas:
+- `frontend/lib/app.dart`
+- `frontend/lib/screens/`
+- `frontend/lib/services/`
+- `frontend/lib/models/`
+- `frontend/lib/config/`
 
-## 3. Capa de Comunicacion — Protocolo TCREI
+Example modules already represented in the app conceptually:
+- vision
+- bio
+- evidence
+- guardian
+- learning
+- movement
+- security
+- silence
 
-**Formato:** JSON estructurado  
-**Protocolos:** WebSocket (tiempo real), REST (consultas), IPC (desktop)
+## 4. Signal flow
 
-### Estructura del mensaje
+```text
+Camera / stream source
+        │
+        ▼
+Optional Python perception service
+        │
+        ├─ frame capture
+        ├─ motion / luminosity / scene analysis
+        ├─ event generation
+        └─ JSON payload publication
+        │
+        ▼
+Event bus / integration layer
+        │
+        ├─ WebSocket or REST bridge
+        ├─ frontend updates
+        └─ user-facing alerts / UI states
+```
+
+## 5. Optional perception service
+
+The repository includes a lightweight Python perception module under `server/vision/`.
+
+It is intended for:
+- webcam testing
+- RTSP/MJPEG stream support
+- motion or scene detection
+- event generation for visual monitoring
+- optional audio announcements with TTS
+
+This service is intentionally simple and modular. It exists to support practical experimentation without making the repository depend on a heavy enterprise backend.
+
+## 6. Communication model
+
+The current architecture follows a practical event model rather than a complex all-encompassing protocol.
+
+Example event structure:
 
 ```json
 {
-  "type": "command | query | event | response | error",
-  "module": "vision | bio | evidencia | ...",
-  "action": "process | start_session | stop_session | verify | ...",
-  "payload": { ... },
-  "timestamp": 1694123456789,
-  "id": "uuid-v4"
+  "type": "event",
+  "module": "vision",
+  "action": "perception.update",
+  "payload": {
+    "event_type": "scene_snapshot",
+    "source": "camera_main",
+    "confidence": 0.7,
+    "metadata": {
+      "luminosidad": 84.2,
+      "estado_escena": "normal"
+    },
+    "timestamp": "2026-10-14T03:55:00Z"
+  }
 }
 ```
 
-### Tipos de mensaje
+This format is simple, readable and easy to consume in Flutter or Python.
 
-| Type | Direccion | Descripcion |
-|------|-----------|-------------|
-| `command` | Frontend → Backend | Comando del usuario (texto o voz) |
-| `query` | Frontend → Backend | Consulta de estado o datos |
-| `event` | Backend → Frontend | Notificacion push (alerta, bio tick, deteccion) |
-| `response` | Backend → Frontend | Respuesta a command o query |
-| `error` | Backend → Frontend | Error procesado |
+## 7. Realistic roadmap
 
-### Eventos en tiempo real
+### Phase 1 — usable applications
+- accessible UI polish
+- module stabilization
+- camera integration prototypes
+- monitoring dashboards
+- event-driven communication
 
-| Event | Descripcion |
-|-------|-------------|
-| `perception.update` | Nuevos datos de percepcion (vision, sensores) |
-| `bio.tick` | Actualizacion de sesion bio (coherencia, ciclos, reencuadre) |
-| `bio.session_complete` | Sesion bio completada |
-| `guardian.alert` | Nueva alerta del guardian |
-| `guardian.state_change` | Cambio de estado del guardian (dormant → active → alert → quarantine) |
-| `usb.port_change` | Cambio de estado de un puerto USB (blocked, allowed, infected) |
-| `sync.transport_changed` | Cambio de transporte de sincronizacion P2P |
-| `evidence.recorded` | Nueva entrada en la cadena EVOLIS |
-| `moral.blocked` | Comando bloqueado por el filtro etico |
-| `voice.response` | Respuesta de voz lista para sintetizar |
-| `connection.status` | Cambio de estado de conexion (online/offline) |
+### Phase 2 — operational tools
+- real camera workflows
+- more robust detection modules
+- better dashboard telemetry
+- optional backend service layer
 
-## 4. Versiones y Compatibilidad
+### Phase 3 — productization
+- deployment-focused configuration
+- device management
+- performance tuning
+- user validation and product refinement
 
-| Componente | Version | Lenguaje |
-|------------|---------|----------|
-| Sentra Core Motor | 4.0.0_BIO | TypeScript |
-| Sentra Core API Server | 1.0.0 | TypeScript (Node.js) |
-| Sentra Core Frontend | 1.0.0 | Dart (Flutter) |
-| Protocolo TCREI | 4.0 | JSON |
+## 8. Design principles
 
-## 5. Principios
+- useful before impressive
+- accessibility before decoration
+- simple architecture before complexity
+- real user value over narrative abstraction
+- modularity without over-engineering
 
-1. **Offline-first**: Toda operacion funciona sin conexion a internet
-2. **Veto humano estricto**: El veto humano siempre tiene prioridad
-3. **Soberania del dato**: Los datos pertenecen al usuario, almacenados localmente
-4. **Trazabilidad inalterable**: EVOLIS + firmas ECDSA P-256
-5. **Modularidad**: Navaja suisa con 9+ modos de operacion
-6. **Multiplataforma**: Celular + PC, UI adaptativa
-7. **Sincronizacion P2P**: Syncthing / Bluetooth Mesh / LoRa
-8. **Bio-Software Interface**: Inferencia activa, placebos cognitivos, neuroplasticidad, epigenetica, reencuadre cognitivo y coherencia cardiaca
-9. **Accesibilidad nativa**: TalkBack, VoiceOver, NVDA, ARIA — sin soluciones parche
+## 9. Status
 
-## 6. Preparacion para Verticales
+This repository is best understood as an evolving platform for useful, real-world applications — especially in visual assistance, environmental monitoring and accessible interface design.
 
-- **Sentinel**: Modo de seguridad y monitoreo con sensores + EVOLIS + Guardian
-- **Vision**: Asistencia visual con deteccion offline + descripcion por voz
-
-Ambas verticales reutilizan el motor completo via la API server.
-
-### Roadmap criptografico
-
-ECDSA P-256 en Q1 2027.
+The project is intentionally practical and focused on solving concrete user needs, rather than presenting itself as a grandiose engine with impossible scope.
