@@ -1,77 +1,46 @@
-# Sentra Core Frontend
+## Accesibilidad agnóstica (TalkBack / NVDA)
 
-This folder contains the Flutter app for the Sentra Core Vision project.
+El objetivo es que la experiencia accesible funcione independientemente de servicios
+específicos del sistema operativo como TalkBack (Android) o NVDA (Windows).
 
-## Current role
+Estrategia aplicada:
 
-The frontend is the main user-facing layer of the project. It presents the experience and provides the interface for:
-- vision-related workflows
-- monitoring and alerting views
-- accessibility profiles
-- modular interaction and navigation
-- real-time updates from the companion perception layer
+- Implementar una capa de abstracción (`AccessibilityAdapter`) que use:
+  - `flutter_tts` para síntesis local cuando esté disponible.
+  - `vibration` para retroalimentación háptica cuando esté disponible.
+  - Un fallback que envía un evento JSON (`voice.request` / `command`) al
+    backend/transporte de eventos si la síntesis local no está presente o falla.
+- Documentar cómo habilitar las dependencias y cómo pasar un `sendFallbackEvent`
+  fiable (por ejemplo, un cliente WebSocket) desde la app hacia el adaptador.
 
-## Tech stack
+Dependencias recomendadas (añadir en `pubspec.yaml`):
 
-- Flutter
-- Dart
-- Material 3
-- accessibility-first UI
-
-## Run locally
-
-```bash
-cd frontend
-flutter pub get
-flutter run
+```yaml
+dependencies:
+  flutter_tts: ^4.0.0
+  vibration: ^1.7.4
 ```
 
-Web:
+Ejemplo de uso (Flutter):
 
-```bash
-flutter run -d chrome
+```dart
+import 'package:your_app/services/accessibility_adapter.dart';
+
+final a11y = AccessibilityAdapter(
+  // Optional: provide a function that reliably sends events to your backend
+  sendFallbackEvent: (event) async {
+    // example: sentraClient.send(jsonEncode(event));
+  },
+);
+
+await a11y.speak('Precaución: baja luminosidad detectada');
+await a11y.vibratePattern([200, 100, 200]);
 ```
 
-Android build:
+Notas:
 
-```bash
-flutter build apk
-```
-
-## Project structure
-
-```text
-frontend/
-├── lib/
-│   ├── app.dart
-│   ├── config/
-│   ├── models/
-│   ├── screens/
-│   ├── services/
-│   └── widgets/
-├── android/
-├── ios/
-├── web/
-├── pubspec.yaml
-├── README.md
-└── test/
-```
-
-## Current phase
-
-This frontend is part of a practical evolution toward useful applications, not a fictional all-encompassing platform. It is designed to be stable, readable and flexible enough to grow into real product workflows.
-
-## Optional backend integration
-
-The frontend can connect to a local Python vision service or another lightweight event source. The recommended pattern is:
-- REST for state queries
-- WebSocket for live event streams
-- structured JSON payloads
-
-## Accessibility goals
-
-- strong contrast and readable layouts
-- large touch targets
-- speaker-friendly feedback models
-- support for blind, low vision and deaf-blind profiles
-- simple, understandable interaction patterns
+- Esta aproximación permite que la app funcione con o sin servicios de accesibilidad
+  nativos, y asegura una experiencia coherente en plataformas diversas.
+- Para escenarios offline, el backend local de TTS (`server/vision/tts.py`) también
+  puede usarse como respaldo si se dispone de conectividad LAN entre la app y el
+  servicio de percepción.
